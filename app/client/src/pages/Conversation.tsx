@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AGENT_LABELS, formatContext, getSession, listEvents, renameSession, sendCommand, sessionTitle, type EventRow, type SessionRow } from '../api/bridge';
 import { Button } from '../components/ui/button';
@@ -63,9 +63,16 @@ const Conversation: React.FC = () => {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [pending, setPending] = useState<{ content: string; ts: string }[]>([]);
+  const [nowTick, setNowTick] = useState(0);
   const lastTsRef = useRef<string>('');
   const oldestTsRef = useRef<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Tick every 2s so time-based busy clearing re-evaluates even with no new events.
+  useEffect(() => {
+    const t = setInterval(() => setNowTick((x) => x + 1), 2000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -189,6 +196,31 @@ const Conversation: React.FC = () => {
   const ctxLabel = formatContext(session);
   const turns = groupTurns(events);
 
+  // Agent-busy lock: freeze Send while the backend agent is working on a turn.
+  // Busy iff (a) a message was just sent and not yet echoed, or (b) the last
+  // user message has no final answer yet AND there was recent activity
+  // (otherwise a stalled turn frees up after 90s).
+  const busy = useMemo(() => {
+    if (pending.length > 0) return true;
+    let lastUser = -1;
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].role === 'user') { lastUser = i; break; }
+    }
+    if (lastUser === -1) return false;
+    for (let i = lastUser + 1; i < events.length; i++) {
+      if (events[i].role === 'assistant' && events[i].content && !events[i].content.startsWith('🔧')) {
+        return false; // a final answer landed -> turn done
+      }
+    }
+    const lastTs = events[events.length - 1]?.ts;
+    if (lastTs) {
+      const ageMs = Date.now() - new Date(lastTs).getTime();
+      if (ageMs > 90000) return false; // no activity for 90s -> assume done/stalled
+    }
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, pending, nowTick]);
+
   const startRename = () => {
     setNameDraft(title);
     setEditingName(true);
@@ -299,14 +331,20 @@ const Conversation: React.FC = () => {
                 onSend();
               }
             }}
-            placeholder="Send a command to this session… (Enter to send)"
+            placeholder={busy ? 'Agent is working — wait for it to finish…' : 'Send a command to this session… (Enter to send)'}
             className="max-h-32 min-h-[40px] resize-none"
             rows={2}
+            disabled={busy}
           />
-          <Button onClick={onSend} disabled={sending || !input.trim()}>
-            Send
+          <Button onClick={onSend} disabled={busy || sending || !input.trim()}>
+            {busy ? 'Working…' : 'Send'}
           </Button>
         </div>
+        {busy && (
+          <div className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">
+            <span className="inline-block animate-pulse">⏳</span> Agent is working on this session. Send is frozen until it finishes.
+          </div>
+        )}
       </div>
     </div>
   );

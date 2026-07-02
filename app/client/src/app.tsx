@@ -4,6 +4,9 @@ import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import SessionsDrawer from './components/SessionsDrawer';
 import Conversation from './pages/Conversation';
 import NotFound from './pages/NotFound/NotFound';
+import { versionLabel } from './version';
+
+const APP_NAME = 'AgentCLI Bridge';
 
 const Shell: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -29,7 +32,10 @@ const Shell: React.FC = () => {
           ☰ <span className="hidden sm:inline">Sessions</span>
         </button>
         <span className="break-all font-mono text-xs text-muted-foreground">
-          {currentSessionId ?? 'Copilot Bridge'}
+          {currentSessionId ?? APP_NAME}
+        </span>
+        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground/60" title="build version (compare across clients to detect stale cache)">
+          {versionLabel()}
         </span>
       </header>
 
@@ -60,8 +66,8 @@ const Shell: React.FC = () => {
 const Placeholder: React.FC = () => (
   <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
     <div>
-      <p className="mb-1">Tap <span className="font-medium">☰ Sessions</span> to pick a Copilot session.</p>
-      <p className="text-xs">Online sessions are listed first.</p>
+      <p className="mb-1">Tap <span className="font-medium">☰ Sessions</span> to pick an agent session.</p>
+      <p className="text-xs">Copilot · Claude · Codex — online sessions listed first.</p>
     </div>
   </div>
 );
