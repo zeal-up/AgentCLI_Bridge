@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AGENT_LABELS, formatContext, getSession, listEvents, renameSession, sendCommand, sessionTitle, type EventRow, type SessionRow } from '../api/bridge';
 import { Button } from '../components/ui/button';
@@ -67,6 +67,48 @@ const Conversation: React.FC = () => {
   const lastTsRef = useRef<string>('');
   const oldestTsRef = useRef<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ---- Voice input (Web Speech API) ----
+  // Progressive enhancement: only shown where the client supports it. iOS
+  // Feishu (WKWebView) typically doesn't — the button is hidden then.
+  const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
+  const voiceSupported = !!SR;
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<any>(null);
+  const baseInputRef = useRef<string>('');
+
+  const stopListen = useCallback(() => {
+    try { recRef.current?.stop(); } catch { /* ignore */ }
+    setListening(false);
+  }, []);
+
+  const startListen = useCallback(() => {
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = 'zh-CN';
+    rec.continuous = true;
+    rec.interimResults = true;
+    baseInputRef.current = input;
+    let finalText = input;
+    rec.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const seg = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += seg;
+        else interim += seg;
+      }
+      setInput((finalText + interim).slice(0, 8000));
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = (e: any) => {
+      setErr(`voice: ${e.error || 'error'}`);
+      setListening(false);
+    };
+    recRef.current = rec;
+    try { rec.start(); setListening(true); } catch { setListening(false); }
+  }, [SR, input]);
+
+  useEffect(() => () => { try { recRef.current?.stop(); } catch { /* ignore */ } }, []);
 
   // Tick every 2s so time-based busy clearing re-evaluates even with no new events.
   useEffect(() => {
@@ -322,6 +364,18 @@ const Conversation: React.FC = () => {
 
       <div className="shrink-0 border-t border-border p-3">
         <div className="mx-auto flex max-w-3xl items-end gap-2">
+          {voiceSupported && (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={listening ? stopListen : startListen}
+              disabled={busy}
+              title={listening ? 'Stop voice input' : 'Voice input (Web Speech API)'}
+              className={listening ? 'animate-pulse border-red-500 text-red-500' : ''}
+            >
+              🎤
+            </Button>
+          )}
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -331,18 +385,23 @@ const Conversation: React.FC = () => {
                 onSend();
               }
             }}
-            placeholder={busy ? 'Agent is working — wait for it to finish…' : 'Send a command to this session… (Enter to send)'}
+            placeholder={busy ? 'Agent is working — wait for it to finish…' : listening ? 'Listening… speak now' : 'Send a command to this session… (Enter to send)'}
             className="max-h-32 min-h-[40px] resize-none"
             rows={2}
-            disabled={busy}
+            disabled={busy || listening}
           />
-          <Button onClick={onSend} disabled={busy || sending || !input.trim()}>
+          <Button onClick={onSend} disabled={busy || listening || sending || !input.trim()}>
             {busy ? 'Working…' : 'Send'}
           </Button>
         </div>
         {busy && (
           <div className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">
             <span className="inline-block animate-pulse">⏳</span> Agent is working on this session. Send is frozen until it finishes.
+          </div>
+        )}
+        {listening && (
+          <div className="mx-auto mt-1 max-w-3xl text-[11px] text-red-500">
+            🎙 Listening… (speak; text fills the box). Tap 🎤 again to stop.
           </div>
         )}
       </div>
