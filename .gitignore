@@ -8,7 +8,12 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
-# --- Node (app) ---
+# --- Miaoda app: live build/push working dir (private, not open-sourced) ---
+# app/ is also the Miaoda git working tree (pushes to miaoda-git.feishu.cn).
+# Its .git is a gitfile pointer to .app-git/ (the actual repo data), so the
+# outer open-source repo still tracks app/ SOURCE files.
+.app-git/
+app/.git
 app/node_modules/
 app/dist/
 app/build/
@@ -16,17 +21,20 @@ app/logs/
 app/tmp/
 app/.eslintcache
 app/*.tsbuildinfo
-node_modules/
-dist/
-build/
+# Miaoda platform / scaffold private dirs
+app/.agents/
+app/.claude/
+app/.spark
+app/.spark_project
+app/.githooks/
+app/.env
+app/.env.local
+app/.env.*.local
 
 # --- Environment / secrets (never commit) ---
 .env
 .env.local
 .env.*.local
-app/.env
-app/.env.local
-app/.env.*.local
 *.pem
 *.key
 
