@@ -1,0 +1,54 @@
+# --- Python (bridge) ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node (app) ---
+app/node_modules/
+app/dist/
+app/build/
+app/logs/
+app/tmp/
+app/.eslintcache
+app/*.tsbuildinfo
+node_modules/
+dist/
+build/
+
+# --- Environment / secrets (never commit) ---
+.env
+.env.local
+.env.*.local
+app/.env
+app/.env.local
+app/.env.*.local
+*.pem
+*.key
+
+# --- Local bridge state (sqlite, logs, pids) ---
+bridge-state.db
+*.db
+*.db-journal
+logs/
+*.log
+pids/
+*.pid
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Agent/IDE local dirs ---
+.agent/
+.claude/
+.agents/
