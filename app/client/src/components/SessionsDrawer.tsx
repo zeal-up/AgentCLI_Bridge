@@ -85,13 +85,17 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
             return (
               <li key={`${agent}:${r.id}`}>
                 <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect(r.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(r.id); } }}
                   className={cn(
-                    'flex flex-col gap-0.5 px-3 py-2 text-sm hover:bg-accent',
+                    'flex flex-col gap-0.5 px-3 py-2 text-sm hover:bg-accent cursor-pointer',
                     active && 'bg-accent',
                     isHidden && 'opacity-50',
                   )}
                 >
-                  <button onClick={() => onSelect(r.id)} className="flex items-center gap-2 text-left">
+                  <div className="flex items-center gap-2 text-left">
                     <span className={cn('h-2 w-2 shrink-0 rounded-full', r.online ? 'bg-green-500' : 'bg-muted-foreground/30')} />
                     <span className="truncate font-medium">{label}</span>
                     {isHidden && <span className="shrink-0 text-[9px] text-muted-foreground">archived</span>}
@@ -103,7 +107,7 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
                     )}>
                       {AGENT_LABELS[agent] || agent}
                     </span>
-                  </button>
+                  </div>
                   <div className="flex items-center gap-2 pl-4 text-xs text-muted-foreground">
                     <span className="shrink-0 font-mono">{r.id.slice(0, 8)}</span>
                     <span className="break-all">{r.cwd || r.id}</span>
