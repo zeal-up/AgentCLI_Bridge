@@ -263,9 +263,52 @@ class ClaudeAdapter(AgentAdapter):
         # "Live" iff an interactive claude process is running this session
         # (matched by real cwd + newest .jsonl in the project dir). Falls back
         # to mtime recency only as a last resort.
-        if _find_live_claude_pid(m.get("path", ""), m.get("cwd")):
+        if self._find_live_pid(m):
             return True
         return (time.time() - m.get("mtime", 0)) < ONLINE_RECENT_SEC
+
+    def _find_live_pid(self, m: dict[str, Any]) -> int | None:
+        """The interactive claude pid running this session, or None.
+
+        Primary match: a live proc whose cwd == the session's recorded cwd, AND
+        this transcript is the newest .jsonl in its project dir (so we don't
+        hijack another session in the same cwd).
+
+        Fallback for renamed cwds: if the recorded cwd no longer exists (the
+        dir was renamed while the session was live), find an "orphan" live claude
+        proc — one whose cwd matches NO session's recorded cwd. A renamed-cwd
+        session's proc now runs in the new (unrecorded) cwd, so it shows up as
+        an orphan. Link them 1:1 (only when there's exactly one orphan)."""
+        path = m.get("path", "")
+        cwd = m.get("cwd")
+        pid = _find_live_claude_pid(path, cwd)
+        if pid:
+            return pid
+        # stale cwd (dir renamed/deleted) → orphan-proc fallback
+        if cwd and not os.path.exists(cwd):
+            return self._orphan_live_pid()
+        return None
+
+    def _orphan_live_pid(self) -> int | None:
+        """A live claude proc whose cwd matches no session's recorded cwd (i.e.
+        the dir was renamed). Only returns a pid when exactly one orphan exists
+        (ambiguous otherwise)."""
+        proc_cwds = live.live_cwd_map("claude")  # {realpath(cwd): pid}
+        if not proc_cwds:
+            return None
+        recorded: set[str] = set()
+        for s in self._scan().values():
+            c = s.get("cwd")
+            if c:
+                try:
+                    recorded.add(os.path.realpath(c))
+                except OSError:
+                    pass
+        orphans = [pid for cwd, pid in proc_cwds.items() if cwd not in recorded]
+        if len(orphans) == 1:
+            log.info("claude: one orphan live proc (renamed cwd) -> %s", orphans[0])
+            return orphans[0]
+        return None
 
     def get_cwd(self, session_id: str) -> str | None:
         m = self._scan(force=True).get(session_id)
@@ -388,7 +431,7 @@ class ClaudeAdapter(AgentAdapter):
         # live process / not in tmux.
         path = self.events_path(session_id)
         m = self._scan().get(session_id) or {}
-        pid = _find_live_claude_pid(path, m.get("cwd"))
+        pid = self._find_live_pid(m)
         if pid:
             pane = live.tmux_pane_for_pid(pid)
             if pane:
