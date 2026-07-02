@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from .base import AgentAdapter, context_limit_for
+from . import live
 from .. import config
 from .. import lark_db
 
@@ -65,12 +66,36 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _find_live_copilot_pid(session_id: str) -> int | None:
+    """Find the interactive `copilot --resume=<session_id>` process by matching
+    the session id in its cmdline (precise — no cwd/pane-name ambiguity).
+    Excludes headless `-p` subprocesses (fd 0 = /dev/null)."""
+    for pid in live._interactive_pids("copilot"):
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                cmd = fh.read().decode("utf-8", "replace")
+        except OSError:
+            continue
+        if session_id in cmd:
+            return pid
+    return None
+
+
+def _tmux_pane_exists(target: str) -> bool:
+    try:
+        p = subprocess.run(["tmux", "has-session", "-t", target],
+                           capture_output=True, text=True, timeout=5)
+        return p.returncode == 0
+    except Exception:
+        return False
+
+
 def _live_locks() -> dict[str, int]:
     """{session_id: pid} for sessions whose inuse.<pid>.lock pid is alive."""
     base = config.SESSION_STATE_DIR
     if not os.path.isdir(base):
         return {}
-    live: dict[str, int] = {}
+    live_sids: dict[str, int] = {}
     for sid in os.listdir(base):
         sd = os.path.join(base, sid)
         if not os.path.isdir(sd):
@@ -83,9 +108,9 @@ def _live_locks() -> dict[str, int]:
             except ValueError:
                 continue
             if _pid_alive(pid):
-                live[sid] = pid
+                live_sids[sid] = pid
                 break
-    return live
+    return live_sids
 
 
 class CopilotAdapter(AgentAdapter):
@@ -269,20 +294,33 @@ class CopilotAdapter(AgentAdapter):
         return f"completed: {line_count} events, last_type={last_type}"
 
     def inject_online(self, session_id: str, content: str) -> str:
+        # Live route (auto-scan): find the interactive `copilot --resume=<sid>`
+        # process by matching the session id in its cmdline, then type the
+        # message into its tmux pane. Falls back to the legacy named-pane
+        # (`copilot-<sid>`) approach, then headless resume.
+        pid = _find_live_copilot_pid(session_id)
+        if pid:
+            pane = live.tmux_pane_for_pid(pid)
+            if pane:
+                if live.tmux_send_text(pane, content):
+                    return f"sent to tmux pane {pane} (live copilot pid {pid})"
+                log.warning("copilot %s: tmux send failed, degrading", session_id)
+            else:
+                log.info("copilot %s live (pid %s) but not in a tmux pane; headless resume",
+                         session_id, pid)
+        # Legacy: a pane explicitly named copilot-<sid>.
         target = f"copilot-{session_id}"
-        try:
-            p = subprocess.run(["tmux", "-V"], capture_output=True, text=True, timeout=5)
-            if p.returncode != 0:
-                return f"[degraded: tmux unavailable] {self._fallback_offline(session_id, content)}"
-            p = subprocess.run(["tmux", "has-session", "-t", target], capture_output=True, text=True, timeout=5)
-            if p.returncode != 0:
-                return f"[degraded: pane not found] {self._fallback_offline(session_id, content)}"
-            subprocess.run(["tmux", "send-keys", "-t", target, "-l", content], capture_output=True, text=True, timeout=10)
-            subprocess.run(["tmux", "send-keys", "-t", target, "Enter"], capture_output=True, text=True, timeout=10)
-            return f"sent to pane {target}"
-        except Exception as exc:
-            log.error("copilot tmux inject failed: %s", exc)
-            return f"error: tmux send-keys failed ({exc})"
+        if _tmux_pane_exists(target):
+            try:
+                subprocess.run(["tmux", "send-keys", "-t", target, "-l", content],
+                                capture_output=True, text=True, timeout=10)
+                subprocess.run(["tmux", "send-keys", "-t", target, "Enter"],
+                                capture_output=True, text=True, timeout=10)
+                return f"sent to pane {target}"
+            except Exception as exc:
+                log.error("copilot tmux inject failed: %s", exc)
+                return f"error: tmux send-keys failed ({exc})"
+        return self._fallback_offline(session_id, content)
 
     def _fallback_offline(self, session_id: str, content: str) -> str:
         cwd = self.get_cwd(session_id) or os.path.expanduser("~")
