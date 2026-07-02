@@ -1,5 +1,5 @@
 [Unit]
-Description=Copilot Bridge — mirror local Copilot sessions to Feishu Miaoda app
+Description=AgentCLI Bridge — mirror local agent CLI sessions to Feishu Miaoda app
 After=network-online.target
 Wants=network-online.target
 
@@ -7,11 +7,11 @@ Wants=network-online.target
 Type=forking
 # Adjust User/WorkingDirectory to your environment.
 User=root
-WorkingDirectory=/workspace/linzy5@xiaopeng.com/Projects/server_agent_bridge
+WorkingDirectory=/workspace/linzy5@xiaopeng.com/Projects/agentcli_bridge
 # Path to python3 and lark-cli must be on PATH (lark-cli is in /usr/local/bin).
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-ExecStart=/workspace/linzy5@xiaopeng.com/Projects/server_agent_bridge/scripts/bridge-start.sh
-ExecStop=/workspace/linzy5@xiaopeng.com/Projects/server_agent_bridge/scripts/bridge-stop.sh
+ExecStart=/workspace/linzy5@xiaopeng.com/Projects/agentcli_bridge/scripts/bridge-start.sh
+ExecStop=/workspace/linzy5@xiaopeng.com/Projects/agentcli_bridge/scripts/bridge-stop.sh
 PIDFile=/root/.copilot-bridge/bridge.pids
 Restart=on-failure
 RestartSec=5
