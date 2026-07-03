@@ -18,7 +18,7 @@ export interface SessionRow {
   hidden?: boolean;
 }
 
-export type AgentKey = 'copilot' | 'claude';
+export type AgentKey = 'copilot' | 'claude' | 'codex';
 
 export const AGENT_LABELS: Record<string, string> = {
   copilot: 'Copilot',

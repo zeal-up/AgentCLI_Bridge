@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Inject, Logger } from '@nestjs/common';
 import {
   DRIZZLE_DATABASE,
   type PostgresJsDatabase,
@@ -21,9 +21,17 @@ export class EventsService {
    *  `id` is a stable hash (not time-ordered), so we always order by `ts`.
    */
   async list(opts: { sessionId?: string; since?: string; before?: string; limit?: number } = {}) {
-    const limit = Math.min(opts.limit ?? 500, 1000);
+    const sessionId = (opts.sessionId || '').trim();
+    if (!sessionId) throw new BadRequestException('session_id is required');
+    if (opts.since && opts.before) {
+      throw new BadRequestException('since and before cannot be used together');
+    }
+    const rawLimit = opts.limit ?? 500;
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0
+      ? Math.min(Math.floor(rawLimit), 1000)
+      : 500;
     const conds = [];
-    if (opts.sessionId) conds.push(eq(events.sessionId, opts.sessionId));
+    conds.push(eq(events.sessionId, sessionId));
     if (opts.since) conds.push(gt(events.ts, opts.since));
     if (opts.before) conds.push(lt(events.ts, opts.before));
     try {

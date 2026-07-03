@@ -1,9 +1,14 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
 import {
   DRIZZLE_DATABASE,
   type PostgresJsDatabase,
 } from '@lark-apaas/fullstack-nestjs-core';
-import { commands } from '@server/database/schema';
+import { commands, sessions } from '@server/database/schema';
+import { nextQueueId } from '@server/common/utils/queue-id';
+import { eq } from 'drizzle-orm';
+
+const AGENTS = new Set(['copilot', 'claude', 'codex']);
+const MAX_COMMAND_CHARS = 8000;
 
 @Injectable()
 export class CommandsService {
@@ -20,17 +25,37 @@ export class CommandsService {
     senderOpenId?: string;
     agent?: string;
   }) {
-    // bigint id generated client-side (no auto-increment on the table).
-    // mode:"number" => JS number; Date.now()*1000+rand stays within safe integer range.
-    const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    const sessionId = (input.sessionId || '').trim();
+    const content = (input.content || '').trim();
+    const senderOpenId = (input.senderOpenId || '').trim();
+
+    if (!sessionId) throw new BadRequestException('sessionId is required');
+    if (!content) throw new BadRequestException('content is required');
+    if (content.length > MAX_COMMAND_CHARS) {
+      throw new BadRequestException(`content is too long; max ${MAX_COMMAND_CHARS} characters`);
+    }
+    if (!senderOpenId) throw new ForbiddenException('missing Feishu user identity');
+
     const createdAt = new Date().toISOString();
-    const agent = input.agent || 'copilot';
     try {
+      const existing = await this.db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
+      const session = existing[0];
+      if (!session) throw new NotFoundException('session not found');
+
+      const requestedAgent = input.agent?.trim();
+      const agent = requestedAgent && AGENTS.has(requestedAgent)
+        ? requestedAgent
+        : session.agent || 'copilot';
+      if (requestedAgent && requestedAgent !== agent) {
+        throw new BadRequestException('agent does not match the target session');
+      }
+
+      const id = await nextQueueId();
       await this.db.insert(commands).values({
         id,
-        sessionId: input.sessionId,
-        content: input.content,
-        senderOpenId: input.senderOpenId,
+        sessionId,
+        content,
+        senderOpenId,
         createdAt,
         consumed: false,
         agent,

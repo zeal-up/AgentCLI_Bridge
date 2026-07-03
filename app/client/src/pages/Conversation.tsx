@@ -135,6 +135,7 @@ const Conversation: React.FC = () => {
     oldestTsRef.current = '';
 
     let cancelled = false;
+    let inFlight = false;
     const seen = new Set<string | number>();
     const applyRows = (rows: EventRow[]) => {
       let maxTs = lastTsRef.current;
@@ -159,6 +160,8 @@ const Conversation: React.FC = () => {
       return fresh.length;
     };
     const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const since = lastTsRef.current || undefined;
         const rows = await listEvents(sessionId, since, undefined, PAGE_SIZE);
@@ -169,6 +172,7 @@ const Conversation: React.FC = () => {
       } catch (e: any) {
         setErr(e?.response?.status ? `HTTP ${e.response.status}` : String(e?.message ?? e));
       } finally {
+        inFlight = false;
         if (!cancelled) setLoading(false);
       }
     };
@@ -289,12 +293,13 @@ const Conversation: React.FC = () => {
     return true;
   }, [events, pending, pendingPrompt, nowTick]);
 
+  const turns = useMemo(() => groupTurns(events), [events]);
+
   if (!sessionId) return <div className="p-4 text-sm">No session.</div>;
 
   const title = sessionTitle(session, sessionId);
   const agent = session?.agent || 'copilot';
   const ctxLabel = formatContext(session);
-  const turns = groupTurns(events);
 
   const startRename = () => {
     setNameDraft(title);

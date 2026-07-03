@@ -1,10 +1,14 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
 import {
   DRIZZLE_DATABASE,
   type PostgresJsDatabase,
 } from '@lark-apaas/fullstack-nestjs-core';
 import { renames, sessions } from '@server/database/schema';
+import { nextQueueId } from '@server/common/utils/queue-id';
 import { and, desc, eq } from 'drizzle-orm';
+
+const AGENTS = new Set(['copilot', 'claude', 'codex']);
+const MAX_DISPLAY_NAME_CHARS = 160;
 
 @Injectable()
 export class SessionsService {
@@ -19,7 +23,11 @@ export class SessionsService {
   async list(agent?: string, includeHidden = false) {
     try {
       const conds = [];
-      if (agent) conds.push(eq(sessions.agent, agent));
+      const normalizedAgent = agent?.trim();
+      if (normalizedAgent) {
+        if (!AGENTS.has(normalizedAgent)) throw new BadRequestException('invalid agent');
+        conds.push(eq(sessions.agent, normalizedAgent));
+      }
       if (!includeHidden) conds.push(eq(sessions.hidden, false));
       return await this.db.select().from(sessions).where(and(...conds)).orderBy(desc(sessions.updatedAt));
     } catch (err) {
@@ -45,7 +53,13 @@ export class SessionsService {
    *  so page ↔ CLI names correspond. Empty/null clears the display name. */
   async rename(id: string, displayName: string | null) {
     try {
+      const existing = await this.get(id);
+      if (!existing) throw new NotFoundException('session not found');
+
       const value = displayName && displayName.trim() ? displayName.trim() : null;
+      if (value && value.length > MAX_DISPLAY_NAME_CHARS) {
+        throw new BadRequestException(`displayName is too long; max ${MAX_DISPLAY_NAME_CHARS} characters`);
+      }
       // Instant display update (summary mirrors the native name; display_name
       // is the page-side override that survives indexer upserts).
       await this.db.update(sessions)
@@ -54,9 +68,8 @@ export class SessionsService {
 
       if (value) {
         // Resolve agent so the bridge dispatches to the right adapter.
-        const existing = await this.get(id);
         const agent = existing?.agent || 'copilot';
-        const rid = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+        const rid = await nextQueueId();
         await this.db.insert(renames).values({
           id: rid,
           sessionId: id,
@@ -77,6 +90,8 @@ export class SessionsService {
    *  `hidden`, so an archive survives reindex. CLI files are NOT deleted. */
   async archive(id: string, hidden: boolean) {
     try {
+      const existing = await this.get(id);
+      if (!existing) throw new NotFoundException('session not found');
       await this.db.update(sessions).set({ hidden }).where(eq(sessions.id, id));
       return this.get(id);
     } catch (err) {
