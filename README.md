@@ -155,6 +155,8 @@ python -m bridge events --session <id>   # 查某 session 的事件
 
 ## 开发文档
 
+> 🌐 **可视化版**：所有文档也有一个带侧边栏导航、代码高亮、明暗主题的单页 HTML 版本，直接用浏览器打开 [`docs_html/index.html`](docs_html/index.html) 即可（无需联网，自包含）。源 markdown 仍在原位，改完跑 `python3 docs_html/build.py` 重新生成。
+
 - [docs/INSTALL.md](docs/INSTALL.md) — 人工安装详解
 - [docs/INSTALL_FOR_AGENT.md](docs/INSTALL_FOR_AGENT.md) — 让 agent 帮你安装
 - [docs/DESIGN.md](docs/DESIGN.md) — 架构设计原档

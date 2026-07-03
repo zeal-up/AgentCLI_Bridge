@@ -1,0 +1,1459 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentCLI Bridge — 文档</title>
+<style>
+:root{
+  --bg:#fafbfc; --bg-soft:#f1f3f5; --card:#fff; --fg:#1f2328; --fg-mut:#57606a;
+  --border:#d8dee4; --accent:#0969da; --accent-soft:#ddf4ff; --code-bg:#f6f8fa;
+  --code-fg:#1f2328; --warn:#bf8700; --warn-bg:#fff8c5; --ok:#1a7f37; --ok-bg:#dafbe1;
+  --shadow:0 6px 24px rgba(0,0,0,.08); --sidebar-w:280px;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0d1117; --bg-soft:#161b22; --card:#161b22; --fg:#c9d1d9; --fg-mut:#8b949e;
+    --border:#30363d; --accent:#58a6ff; --accent-soft:#0d2d4f; --code-bg:#0d1117; --code-fg:#c9d1d9;
+    --warn:#d29922; --warn-bg:#3b2c10; --ok:#3fb950; --ok-bg:#0d2818; --shadow:0 6px 24px rgba(0,0,0,.4);}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth; scroll-padding-top:72px}
+body{margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Helvetica,Arial,sans-serif; background:var(--bg); color:var(--fg); line-height:1.7; font-size:15.5px}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* top bar */
+.topbar{position:fixed; top:0; left:0; right:0; height:56px; z-index:50; background:var(--card); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; padding:0 16px}
+.topbar .brand{font-weight:700; font-size:16px; white-space:nowrap}
+.topbar .brand .v{color:var(--fg-mut); font-weight:400; font-size:12px; margin-left:6px}
+.menu-btn{display:none; background:none; border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer; color:var(--fg); font-size:18px}
+.search{flex:1; max-width:380px; margin-left:auto}
+.search input{width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg-soft); color:var(--fg); font-size:13px}
+.search input:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+.theme-hint{color:var(--fg-mut); font-size:12px; white-space:nowrap}
+
+/* layout */
+.layout{display:flex; max-width:1400px; margin:56px auto 0; }
+.sidebar{width:var(--sidebar-w); flex-shrink:0; position:sticky; top:56px; height:calc(100vh - 56px); overflow-y:auto; padding:20px 12px 40px; border-right:1px solid var(--border)}
+.sidebar nav{display:flex; flex-direction:column; gap:2px}
+.doc-group{margin-bottom:10px}
+.doc-group > .gtitle{display:flex; align-items:center; gap:8px; padding:6px 10px; font-weight:600; border-radius:6px; color:var(--fg)}
+.doc-group > .gtitle .ic{font-size:15px}
+.doc-group > ul{list-style:none; padding:0 0 0 26px; margin:4px 0 0}
+.doc-group > ul li{margin:1px 0}
+.doc-group a.sub{display:block; padding:4px 8px; border-radius:5px; color:var(--fg-mut); font-size:13px; line-height:1.35}
+.doc-group a.sub:hover{background:var(--bg-soft); color:var(--fg); text-decoration:none}
+.doc-group a.sub.active{background:var(--accent-soft); color:var(--accent); font-weight:600}
+.content{flex:1; min-width:0; padding:32px 40px 80px; max-width:920px}
+.content section.doc{margin-bottom:56px; padding-top:8px; border-top:2px solid var(--border)}
+.content section.doc:first-child{border-top:none}
+.content section.doc > .doc-anchor-target{scroll-margin-top:72px}
+
+/* typography */
+h1,h2,h3,h4{scroll-margin-top:72px; line-height:1.3; font-weight:700}
+h1{font-size:27px; margin:0 0 18px; padding-bottom:10px; border-bottom:1px solid var(--border)}
+h2{font-size:22px; margin:32px 0 12px; padding-bottom:6px; border-bottom:1px solid var(--border)}
+h3{font-size:18px; margin:24px 0 10px}
+h4{font-size:15px; margin:18px 0 8px; color:var(--fg-mut)}
+p{margin:10px 0}
+ul,ol{margin:10px 0; padding-left:26px}
+li{margin:4px 0}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:13px; background:var(--code-bg); padding:2px 6px; border-radius:4px; color:var(--code-fg)}
+pre{background:var(--code-bg); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; margin:14px 0; box-shadow:var(--shadow)}
+pre code{background:none; padding:0; font-size:12.5px; line-height:1.5}
+blockquote{margin:14px 0; padding:10px 16px; border-left:4px solid var(--accent); background:var(--accent-soft); border-radius:0 6px 6px 0; color:var(--fg)}
+table{border-collapse:collapse; width:100%; margin:14px 0; font-size:13.5px; display:block; overflow-x:auto}
+th,td{border:1px solid var(--border); padding:8px 12px; text-align:left; vertical-align:top}
+th{background:var(--bg-soft); font-weight:600}
+tr:nth-child(even) td{background:var(--bg-soft)}
+hr{border:none; border-top:1px solid var(--border); margin:28px 0}
+img{max-width:100%}
+
+/* codehilite overrides: use our theme tokens so it works in dark mode */
+div.highlight{background:var(--code-bg) !important; border-radius:8px; margin:14px 0}
+div.highlight pre{margin:0; border:none; box-shadow:none}
+.codehilite .vc,.codehilite .nd{color:inherit}
+.codehilite .hll{background:rgba(255,255,255,.06)}
+
+/* mobile */
+@media (max-width: 900px){
+  .menu-btn{display:inline-block}
+  .sidebar{position:fixed; left:0; top:56px; z-index:40; background:var(--card); transform:translateX(-100%); transition:transform .2s; box-shadow:var(--shadow)}
+  .sidebar.open{transform:translateX(0)}
+  .content{padding:20px 16px 60px; max-width:100%}
+  .search{max-width:none}
+  .theme-hint{display:none}
+  table{font-size:12.5px}
+}
+.back-to-top{position:fixed; bottom:20px; right:20px; width:40px; height:40px; border-radius:50%; background:var(--card); border:1px solid var(--border); box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--fg); z-index:30; opacity:0; transition:opacity .2s}
+.back-to-top.show{opacity:1}
+
+pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.codehilite .hll { background-color: #ffffcc }
+.codehilite .c { color: #3D7B7B; font-style: italic } /* Comment */
+.codehilite .err { border: 1px solid #F00 } /* Error */
+.codehilite .k { color: #008000; font-weight: bold } /* Keyword */
+.codehilite .o { color: #666 } /* Operator */
+.codehilite .ch { color: #3D7B7B; font-style: italic } /* Comment.Hashbang */
+.codehilite .cm { color: #3D7B7B; font-style: italic } /* Comment.Multiline */
+.codehilite .cp { color: #9C6500 } /* Comment.Preproc */
+.codehilite .cpf { color: #3D7B7B; font-style: italic } /* Comment.PreprocFile */
+.codehilite .c1 { color: #3D7B7B; font-style: italic } /* Comment.Single */
+.codehilite .cs { color: #3D7B7B; font-style: italic } /* Comment.Special */
+.codehilite .gd { color: #A00000 } /* Generic.Deleted */
+.codehilite .ge { font-style: italic } /* Generic.Emph */
+.codehilite .ges { font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.codehilite .gr { color: #E40000 } /* Generic.Error */
+.codehilite .gh { color: #000080; font-weight: bold } /* Generic.Heading */
+.codehilite .gi { color: #008400 } /* Generic.Inserted */
+.codehilite .go { color: #717171 } /* Generic.Output */
+.codehilite .gp { color: #000080; font-weight: bold } /* Generic.Prompt */
+.codehilite .gs { font-weight: bold } /* Generic.Strong */
+.codehilite .gu { color: #800080; font-weight: bold } /* Generic.Subheading */
+.codehilite .gt { color: #04D } /* Generic.Traceback */
+.codehilite .kc { color: #008000; font-weight: bold } /* Keyword.Constant */
+.codehilite .kd { color: #008000; font-weight: bold } /* Keyword.Declaration */
+.codehilite .kn { color: #008000; font-weight: bold } /* Keyword.Namespace */
+.codehilite .kp { color: #008000 } /* Keyword.Pseudo */
+.codehilite .kr { color: #008000; font-weight: bold } /* Keyword.Reserved */
+.codehilite .kt { color: #B00040 } /* Keyword.Type */
+.codehilite .m { color: #666 } /* Literal.Number */
+.codehilite .s { color: #BA2121 } /* Literal.String */
+.codehilite .na { color: #687822 } /* Name.Attribute */
+.codehilite .nb { color: #008000 } /* Name.Builtin */
+.codehilite .nc { color: #00F; font-weight: bold } /* Name.Class */
+.codehilite .no { color: #800 } /* Name.Constant */
+.codehilite .nd { color: #A2F } /* Name.Decorator */
+.codehilite .ni { color: #717171; font-weight: bold } /* Name.Entity */
+.codehilite .ne { color: #CB3F38; font-weight: bold } /* Name.Exception */
+.codehilite .nf { color: #00F } /* Name.Function */
+.codehilite .nl { color: #767600 } /* Name.Label */
+.codehilite .nn { color: #00F; font-weight: bold } /* Name.Namespace */
+.codehilite .nt { color: #008000; font-weight: bold } /* Name.Tag */
+.codehilite .nv { color: #19177C } /* Name.Variable */
+.codehilite .ow { color: #A2F; font-weight: bold } /* Operator.Word */
+.codehilite .w { color: #BBB } /* Text.Whitespace */
+.codehilite .mb { color: #666 } /* Literal.Number.Bin */
+.codehilite .mf { color: #666 } /* Literal.Number.Float */
+.codehilite .mh { color: #666 } /* Literal.Number.Hex */
+.codehilite .mi { color: #666 } /* Literal.Number.Integer */
+.codehilite .mo { color: #666 } /* Literal.Number.Oct */
+.codehilite .sa { color: #BA2121 } /* Literal.String.Affix */
+.codehilite .sb { color: #BA2121 } /* Literal.String.Backtick */
+.codehilite .sc { color: #BA2121 } /* Literal.String.Char */
+.codehilite .dl { color: #BA2121 } /* Literal.String.Delimiter */
+.codehilite .sd { color: #BA2121; font-style: italic } /* Literal.String.Doc */
+.codehilite .s2 { color: #BA2121 } /* Literal.String.Double */
+.codehilite .se { color: #AA5D1F; font-weight: bold } /* Literal.String.Escape */
+.codehilite .sh { color: #BA2121 } /* Literal.String.Heredoc */
+.codehilite .si { color: #A45A77; font-weight: bold } /* Literal.String.Interpol */
+.codehilite .sx { color: #008000 } /* Literal.String.Other */
+.codehilite .sr { color: #A45A77 } /* Literal.String.Regex */
+.codehilite .s1 { color: #BA2121 } /* Literal.String.Single */
+.codehilite .ss { color: #19177C } /* Literal.String.Symbol */
+.codehilite .bp { color: #008000 } /* Name.Builtin.Pseudo */
+.codehilite .fm { color: #00F } /* Name.Function.Magic */
+.codehilite .vc { color: #19177C } /* Name.Variable.Class */
+.codehilite .vg { color: #19177C } /* Name.Variable.Global */
+.codehilite .vi { color: #19177C } /* Name.Variable.Instance */
+.codehilite .vm { color: #19177C } /* Name.Variable.Magic */
+.codehilite .il { color: #666 } /* Literal.Number.Integer.Long */
+@media (prefers-color-scheme: dark){
+pre { line-height: 125%; }
+td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+span.linenos { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
+td.linenos .special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 5px; padding-right: 5px; }
+.codehilite .hll { background-color: #49483e }
+.codehilite .c { color: #959077 } /* Comment */
+.codehilite .err { color: #ED007E; background-color: #1E0010 } /* Error */
+.codehilite .esc { color: #F8F8F2 } /* Escape */
+.codehilite .g { color: #F8F8F2 } /* Generic */
+.codehilite .k { color: #66D9EF } /* Keyword */
+.codehilite .l { color: #AE81FF } /* Literal */
+.codehilite .n { color: #F8F8F2 } /* Name */
+.codehilite .o { color: #FF4689 } /* Operator */
+.codehilite .x { color: #F8F8F2 } /* Other */
+.codehilite .p { color: #F8F8F2 } /* Punctuation */
+.codehilite .ch { color: #959077 } /* Comment.Hashbang */
+.codehilite .cm { color: #959077 } /* Comment.Multiline */
+.codehilite .cp { color: #959077 } /* Comment.Preproc */
+.codehilite .cpf { color: #959077 } /* Comment.PreprocFile */
+.codehilite .c1 { color: #959077 } /* Comment.Single */
+.codehilite .cs { color: #959077 } /* Comment.Special */
+.codehilite .gd { color: #FF4689 } /* Generic.Deleted */
+.codehilite .ge { color: #F8F8F2; font-style: italic } /* Generic.Emph */
+.codehilite .ges { color: #F8F8F2; font-weight: bold; font-style: italic } /* Generic.EmphStrong */
+.codehilite .gr { color: #F8F8F2 } /* Generic.Error */
+.codehilite .gh { color: #F8F8F2 } /* Generic.Heading */
+.codehilite .gi { color: #A6E22E } /* Generic.Inserted */
+.codehilite .go { color: #66D9EF } /* Generic.Output */
+.codehilite .gp { color: #FF4689; font-weight: bold } /* Generic.Prompt */
+.codehilite .gs { color: #F8F8F2; font-weight: bold } /* Generic.Strong */
+.codehilite .gu { color: #959077 } /* Generic.Subheading */
+.codehilite .gt { color: #F8F8F2 } /* Generic.Traceback */
+.codehilite .kc { color: #66D9EF } /* Keyword.Constant */
+.codehilite .kd { color: #66D9EF } /* Keyword.Declaration */
+.codehilite .kn { color: #FF4689 } /* Keyword.Namespace */
+.codehilite .kp { color: #66D9EF } /* Keyword.Pseudo */
+.codehilite .kr { color: #66D9EF } /* Keyword.Reserved */
+.codehilite .kt { color: #66D9EF } /* Keyword.Type */
+.codehilite .ld { color: #E6DB74 } /* Literal.Date */
+.codehilite .m { color: #AE81FF } /* Literal.Number */
+.codehilite .s { color: #E6DB74 } /* Literal.String */
+.codehilite .na { color: #A6E22E } /* Name.Attribute */
+.codehilite .nb { color: #F8F8F2 } /* Name.Builtin */
+.codehilite .nc { color: #A6E22E } /* Name.Class */
+.codehilite .no { color: #66D9EF } /* Name.Constant */
+.codehilite .nd { color: #A6E22E } /* Name.Decorator */
+.codehilite .ni { color: #F8F8F2 } /* Name.Entity */
+.codehilite .ne { color: #A6E22E } /* Name.Exception */
+.codehilite .nf { color: #A6E22E } /* Name.Function */
+.codehilite .nl { color: #F8F8F2 } /* Name.Label */
+.codehilite .nn { color: #F8F8F2 } /* Name.Namespace */
+.codehilite .nx { color: #A6E22E } /* Name.Other */
+.codehilite .py { color: #F8F8F2 } /* Name.Property */
+.codehilite .nt { color: #FF4689 } /* Name.Tag */
+.codehilite .nv { color: #F8F8F2 } /* Name.Variable */
+.codehilite .ow { color: #FF4689 } /* Operator.Word */
+.codehilite .pm { color: #F8F8F2 } /* Punctuation.Marker */
+.codehilite .w { color: #F8F8F2 } /* Text.Whitespace */
+.codehilite .mb { color: #AE81FF } /* Literal.Number.Bin */
+.codehilite .mf { color: #AE81FF } /* Literal.Number.Float */
+.codehilite .mh { color: #AE81FF } /* Literal.Number.Hex */
+.codehilite .mi { color: #AE81FF } /* Literal.Number.Integer */
+.codehilite .mo { color: #AE81FF } /* Literal.Number.Oct */
+.codehilite .sa { color: #E6DB74 } /* Literal.String.Affix */
+.codehilite .sb { color: #E6DB74 } /* Literal.String.Backtick */
+.codehilite .sc { color: #E6DB74 } /* Literal.String.Char */
+.codehilite .dl { color: #E6DB74 } /* Literal.String.Delimiter */
+.codehilite .sd { color: #E6DB74 } /* Literal.String.Doc */
+.codehilite .s2 { color: #E6DB74 } /* Literal.String.Double */
+.codehilite .se { color: #AE81FF } /* Literal.String.Escape */
+.codehilite .sh { color: #E6DB74 } /* Literal.String.Heredoc */
+.codehilite .si { color: #E6DB74 } /* Literal.String.Interpol */
+.codehilite .sx { color: #E6DB74 } /* Literal.String.Other */
+.codehilite .sr { color: #E6DB74 } /* Literal.String.Regex */
+.codehilite .s1 { color: #E6DB74 } /* Literal.String.Single */
+.codehilite .ss { color: #E6DB74 } /* Literal.String.Symbol */
+.codehilite .bp { color: #F8F8F2 } /* Name.Builtin.Pseudo */
+.codehilite .fm { color: #A6E22E } /* Name.Function.Magic */
+.codehilite .vc { color: #F8F8F2 } /* Name.Variable.Class */
+.codehilite .vg { color: #F8F8F2 } /* Name.Variable.Global */
+.codehilite .vi { color: #F8F8F2 } /* Name.Variable.Instance */
+.codehilite .vm { color: #F8F8F2 } /* Name.Variable.Magic */
+.codehilite .il { color: #AE81FF } /* Literal.Number.Integer.Long */
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <button class="menu-btn" aria-label="菜单">☰</button>
+  <div class="brand">AgentCLI Bridge<span class="v">文档</span></div>
+  <div class="search"><input type="search" placeholder="搜索目录…" aria-label="搜索目录"></div>
+  <div class="theme-hint">跟随系统明暗</div>
+</div>
+<div class="layout">
+  <aside class="sidebar"><nav><div class="doc-group"><div class="gtitle"><span class="ic">📖</span><a href="#doc-概览" style="color:inherit">概览</a></div><ul><li><a class="sub" href="#doc-概览-_1">解决什么痛点</a></li><li><a class="sub" href="#doc-概览-_2">架构设计</a></li><li><a class="sub" href="#doc-概览-_3">架构优势</a></li><li><a class="sub" href="#doc-概览-_4">快速开始</a></li><li><a class="sub" href="#doc-概览-_5">仓库结构</a></li><li><a class="sub" href="#doc-概览-_6">运行（日常）</a></li><li><a class="sub" href="#doc-概览-app">改飞书应用（app/）</a></li><li><a class="sub" href="#doc-概览-_7">安全</a></li><li><a class="sub" href="#doc-概览-_8">已知限制</a></li><li><a class="sub" href="#doc-概览-_9">开发文档</a></li></ul></div><div class="doc-group"><div class="gtitle"><span class="ic">📦</span><a href="#doc-安装指南人工" style="color:inherit">安装指南(人工)</a></div><ul><li><a class="sub" href="#doc-安装指南人工-_2">前置总览</a></li><li><a class="sub" href="#doc-安装指南人工-a">A. 服务器侧</a></li><li><a class="sub" href="#doc-安装指南人工-b-full_stack">B. 飞书侧（妙搭 full_stack 应用）</a></li><li><a class="sub" href="#doc-安装指南人工-c-bridge">C. 配置 + 启动 Bridge</a></li><li><a class="sub" href="#doc-安装指南人工-_3">排错速查</a></li></ul></div><div class="doc-group"><div class="gtitle"><span class="ic">🤖</span><a href="#doc-安装交给-agent" style="color:inherit">安装(交给 Agent)</a></div><ul><li><a class="sub" href="#doc-安装交给-agent-_1">你需要知道的项目事实</a></li><li><a class="sub" href="#doc-安装交给-agent-_2">执行策略</a></li><li><a class="sub" href="#doc-安装交给-agent-installsh">分步执行（install.sh 失败时的人工等价物）</a></li><li><a class="sub" href="#doc-安装交给-agent-_3">硬性约束（不要违反）</a></li></ul></div><div class="doc-group"><div class="gtitle"><span class="ic">🏗️</span><a href="#doc-架构设计" style="color:inherit">架构设计</a></div><ul><li><a class="sub" href="#doc-架构设计-_1">一句话</a></li><li><a class="sub" href="#doc-架构设计-_2">总体架构</a></li><li><a class="sub" href="#doc-架构设计-_3">两个部分</a></li><li><a class="sub" href="#doc-架构设计-schema-postgres">数据库 schema（妙搭托管 Postgres）</a></li><li><a class="sub" href="#doc-架构设计-_4">实时性策略</a></li><li><a class="sub" href="#doc-架构设计-_5">为什么是这个方案</a></li><li><a class="sub" href="#doc-架构设计-_6">风险与对策</a></li><li><a class="sub" href="#doc-架构设计-_7">技术选型</a></li><li><a class="sub" href="#doc-架构设计-spike-2026-07-01">spike 验证记录（2026-07-01）</a></li></ul></div><div class="doc-group"><div class="gtitle"><span class="ic">📋</span><a href="#doc-需求" style="color:inherit">需求</a></div><ul><li><a class="sub" href="#doc-需求-_1">背景</a></li><li><a class="sub" href="#doc-需求-_2">核心用户故事</a></li><li><a class="sub" href="#doc-需求-_3">平台选择</a></li><li><a class="sub" href="#doc-需求-_4">功能需求</a></li><li><a class="sub" href="#doc-需求-_5">非功能需求</a></li><li><a class="sub" href="#doc-需求-_6">约束与已知事实（已在本机实测）</a></li></ul></div><div class="doc-group"><div class="gtitle"><span class="ic">🗺️</span><a href="#doc-实施计划" style="color:inherit">实施计划</a></div><ul><li><a class="sub" href="#doc-实施计划-_1">里程碑总览</a></li><li><a class="sub" href="#doc-实施计划-_2">详细任务</a></li><li><a class="sub" href="#doc-实施计划-mvp">一期 MVP 范围</a></li><li><a class="sub" href="#doc-实施计划-_3">关键决策（已定）</a></li><li><a class="sub" href="#doc-实施计划-_4">环境依赖（已具备）</a></li></ul></div><div class="doc-group"><div class="gtitle"><span class="ic">⚙️</span><a href="#doc-injector-规格" style="color:inherit">Injector 规格</a></div><ul><li><a class="sub" href="#doc-injector-规格-_1">目标</a></li><li><a class="sub" href="#doc-injector-规格-_2">依赖（已就绪）</a></li><li><a class="sub" href="#doc-injector-规格-_3">核心逻辑</a></li><li><a class="sub" href="#doc-injector-规格-_4">安全</a></li><li><a class="sub" href="#doc-injector-规格-clibridge__main__py-inject">CLI（bridge/__main__.py 加 inject 命令）</a></li><li><a class="sub" href="#doc-injector-规格-_5">测试</a></li><li><a class="sub" href="#doc-injector-规格-_6">约束</a></li></ul></div></nav></aside>
+  <main class="content">
+<section class="doc" id="doc-概览">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-概览-agentcli-bridge">AgentCLI Bridge<a class="anchor" href="#doc-概览-agentcli-bridge" title="Permanent link">🔗</a></h1>
+<p>从手机/桌面飞书<strong>远程查看与控制</strong>局域网服务器上多个 agent CLI（GitHub Copilot、Claude Code、Codex）的会话——像操作一个在线 AI 应用。一个页面里切换管理多个 agent 的对话，双向实时同步。</p>
+<blockquote>
+<p>服务器不需要公网 IP、不需要端口穿透、不需要自建鉴权/数据库。手机在任意网络下打开飞书即可。</p>
+</blockquote>
+<hr />
+<h2 id="doc-概览-_1">解决什么痛点<a class="anchor" href="#doc-概览-_1" title="Permanent link">🔗</a></h2>
+<p>你在内网服务器（开发机/训练机）上用命令行 agent（Copilot / Claude Code / Codex）写代码、跑任务，会面临一组矛盾：</p>
+<ul>
+<li><strong>人是移动的，机器是固定的。</strong> 训练跑了几小时、agent 在终端里继续工作，你却必须回到工位盯屏幕才能看进度、回话。下班/出门后基本失联。</li>
+<li><strong>多个 agent、多个项目目录、多个 session 散落在各终端窗口里。</strong> 想找"刚才那个会话"要翻 tmux/终端历史，没有统一视图。</li>
+<li><strong>想从手机发一句话让 agent 继续，却没有现成通道。</strong> 手机直接 SSH 进内网服务器不现实（无公网 IP、企业网隔离）。</li>
+<li><strong>现有官方远程方案不通用、不合规。</strong> Copilot <code>--remote</code> 走 GitHub 自家 App、Claude/Codex 各有各的云，彼此不统一，且有些在企业内网不通。</li>
+<li><strong>自建 Web 服务把服务器暴露到公网风险大、要备案、要 HTTPS、要自己写鉴权。</strong> 对个人开发者是负担。</li>
+</ul>
+<p><strong>AgentCLI Bridge 的目标</strong>：把"内网服务器上的 agent 会话"镜像到一个托管在飞书云的应用里，手机打开飞书就能像刷聊天一样看进度、发指令。不暴露服务器、不自建后端、不碰各 agent 的云账号。</p>
+<hr />
+<h2 id="doc-概览-_2">架构设计<a class="anchor" href="#doc-概览-_2" title="Permanent link">🔗</a></h2>
+<div class="codehilite"><pre><span></span><code>   ┌──────────── 内网服务器 (LAN，无公网IP、不可穿透) ────────────┐
+   │                                                              │
+   │  [Bridge 守护进程]  (Python，纯标准库，常驻)                   │
+   │   ┌──────────┬───────────┬──────────────┐                   │
+   │   │ Indexer  │  Tailer   │  Injector    │                   │
+   │   │ 会话索引  │ 对话事件流 │ 指令注入      │                   │
+   │   └────┬─────┴─────┬─────┴───────┬──────┘                   │
+   │        │ 读 ↓      │ 读 ↓       │ 写 ↓                      │
+   │   各 agent 的本地文件（events.jsonl / session-store.db /     │
+   │     ~/.claude/projects/*/*.jsonl / ~/.codex/sessions/...）    │
+   │   注入：live 会话 → tmux send-keys；离线 → 各 CLI headless   │
+   │                                                              │
+   │   全部经 lark-cli apps +db-execute（出站 HTTPS，无监听端口）   │
+   └──────────────────────────┬───────────────────────────────────┘
+                              │ 仅出站
+                              ▼
+   ┌──────────── 飞书云 (妙搭 aPaaS，托管) ──────────────────────┐
+   │  妙搭 full_stack 应用 (NestJS + React + Drizzle)             │
+   │   GET /api/sessions   会话列表                                │
+   │   GET /api/events     对话事件（按 session，轮询）            │
+   │   POST /api/commands  发指令（写 commands 表）               │
+   │   托管 Postgres：sessions / events / commands / renames      │
+   │   平台注入：DB 凭证 + 飞书用户身份（req.userContext）         │
+   └──────────────────────────┬───────────────────────────────────┘
+                              │ 手机/桌面飞书客户端打开
+                              ▼
+                      飞书工作台 / 应用 URL
+</code></pre></div>
+
+<p><strong>三个角色</strong>：</p>
+<ol>
+<li><strong>Bridge 守护进程</strong>（你的服务器，Python，纯标准库无第三方依赖）：三个循环——</li>
+<li><strong>Indexer</strong>（每 60s）：扫各 agent 的本地 session 索引，把 id/cwd/摘要/在线状态 upsert 进妙搭 <code>sessions</code> 表。</li>
+<li><strong>Tailer</strong>（实时，全 session）：按 byte offset 增量读各 agent 的 append-only 事件日志，解析成统一格式，批量写进 <code>events</code> 表。零侵入（只读文件）。</li>
+<li>
+<p><strong>Injector</strong>（每 2s 轮询）：取 <code>commands</code> 表里未消费的指令，按目标 session 是否在线二选一注入——live 会话用 <code>tmux send-keys</code> 键入打开的终端（双向实时），离线会话用各 CLI 的 headless resume（追加到同一 transcript）。</p>
+</li>
+<li>
+<p><strong>妙搭 full_stack 应用</strong>（飞书云托管，仓库 <code>app/</code>）：NestJS 后端用平台注入的 DB 凭证读写同一 Postgres；React 前端渲染 ChatGPT 式聊天 UI（会话列表 + 对话详情 + 指令输入 + 语音输入 + 上下文用量 + 在线状态 + terminal 提示回灌）。</p>
+</li>
+<li>
+<p><strong>飞书客户端</strong>：手机/桌面打开飞书 → 工作台 → 这个应用，即看到所有 agent 会话。</p>
+</li>
+</ol>
+<p><strong>数据流</strong>只经一个中继：托管 Postgres。Bridge 写（出站），应用读+写（平台内），手机读应用。没有任何方向需要从外部主动连服务器。</p>
+<h3 id="doc-概览-agent">多 agent 适配器<a class="anchor" href="#doc-概览-agent" title="Permanent link">🔗</a></h3>
+<p><code>bridge/agents/base.py</code> 定义统一接口（<code>list_sessions</code> / <code>events_path</code> / <code>map_event</code> / <code>is_turn_complete</code> / <code>inject_online</code> / <code>live_pane</code> …），<code>copilot.py</code> / <code>claude.py</code> / <code>codex.py</code> 各自实现。新增一个 agent CLI 只需实现这个接口。</p>
+<hr />
+<h2 id="doc-概览-_3">架构优势<a class="anchor" href="#doc-概览-_3" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>优势</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>无需公网 IP / 无端口穿透</strong></td>
+<td>Bridge 纯出站（<code>lark-cli</code> HTTPS 长连），不开任何监听端口。内网/企业网/NAT 后都能用，不碰防火墙入站策略。</td>
+</tr>
+<tr>
+<td><strong>无需自建 Web/鉴权/数据库</strong></td>
+<td>应用和 DB 托管在飞书妙搭云；DB 凭证与用户身份由平台运行时注入，前端不持密钥，不用自己写登录/OAuth/HTTPS/备案。</td>
+</tr>
+<tr>
+<td><strong>手机任意网络可用</strong></td>
+<td>走飞书客户端本身的长连接，4G/5G/任意 Wi-Fi 都行，与服务器是否在内网无关。</td>
+</tr>
+<tr>
+<td><strong>零侵入读</strong></td>
+<td>读方向只读 agent CLI 本地产生的文件（events.jsonl / transcript），不修改 agent 行为、不打补丁。终端里发起的对话同样被捕获。</td>
+</tr>
+<tr>
+<td><strong>多 agent 统一</strong></td>
+<td>Copilot / Claude / Codex 一个界面管理，同一套会话列表 + 对话视图 + 指令通道，新增 agent 只改一个适配器。</td>
+</tr>
+<tr>
+<td><strong>双向实时</strong></td>
+<td>live 会话走 tmux send-keys，手机发的指令真正键入正在运行的终端，agent 的流式输出即时回灌页面；离线会话走 headless resume 追加 transcript。</td>
+</tr>
+<tr>
+<td><strong>崩溃可恢复</strong></td>
+<td>Tailer 的 byte offset 持久化在本地 sqlite；进程崩了重启从断点续读，事件 id 是稳定 hash（幂等 INSERT ON CONFLICT），不丢不重。</td>
+</tr>
+<tr>
+<td><strong>指令来源受控</strong></td>
+<td>注入带 <code>--allow-all-tools</code> 等高危标志，仅 <code>COPILOT_BRIDGE_ALLOW_OPEN_IDS</code> 白名单内的飞书用户能发指令。</td>
+</tr>
+<tr>
+<td><strong>可观测</strong></td>
+<td>本地日志 + 妙搭 release 历史 + DB 表可直接查；<code>python -m bridge ls/lock/events</code> 一条命令体检。</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>代价：依赖飞书妙搭平台（个人/小团队免费额度通常够用；适合个人开发者与内部小团队，不适合禁用飞书的组织）。</p>
+</blockquote>
+<hr />
+<h2 id="doc-概览-_4">快速开始<a class="anchor" href="#doc-概览-_4" title="Permanent link">🔗</a></h2>
+<div class="codehilite"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>&lt;this-repo&gt;<span class="w"> </span>agentcli_bridge<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>agentcli_bridge
+./install.sh
+</code></pre></div>
+
+<p><code>install.sh</code> 一键完成：装系统依赖 → 装 lark-cli 并扫码登录飞书 → 检测 agent CLI → 创建妙搭应用并推送代码、建表、发布 → 生成 <code>.env.local</code> → 装 systemd 服务并冒烟测试。<strong>唯一需要你动手的是用飞书 App 扫一次码授权 lark-cli。</strong></p>
+<p>详见 <strong><a href="docs/INSTALL.md">docs/INSTALL.md</a></strong>（人工步骤详解）与 <strong><a href="docs/INSTALL_FOR_AGENT.md">docs/INSTALL_FOR_AGENT.md</a></strong>（交给一个 AI agent 帮你装的说明）。</p>
+<blockquote>
+<p>不想跑脚本？<code>docs/INSTALL.md</code> 有完整的人工分步操作；<code>docs/INSTALL_FOR_AGENT.md</code> 是写给 agent 看的，丢给 Claude Code / Copilot 让它在本机替你执行。</p>
+</blockquote>
+<hr />
+<h2 id="doc-概览-_5">仓库结构<a class="anchor" href="#doc-概览-_5" title="Permanent link">🔗</a></h2>
+<div class="codehilite"><pre><span></span><code><span class="nf">bridge</span><span class="err">/</span><span class="w">        </span><span class="no">Python</span><span class="w"> </span><span class="err">桥（</span><span class="no">index</span><span class="err">/</span><span class="no">tail</span><span class="err">/</span><span class="no">inject</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="no">agent</span><span class="w"> </span><span class="err">适配器，纯标准库）</span>
+<span class="w">  </span><span class="nf">agents</span><span class="err">/</span><span class="w">      </span><span class="no">base</span><span class="w"> </span><span class="err">接口</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="no">copilot</span><span class="err">/</span><span class="no">claude</span><span class="err">/</span><span class="no">codex</span><span class="w"> </span><span class="err">适配器</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="no">live</span><span class="w"> </span><span class="err">进程检测</span>
+<span class="nf">app</span><span class="err">/</span><span class="w">           </span><span class="err">飞书妙搭</span><span class="w"> </span><span class="no">full_stack</span><span class="w"> </span><span class="err">应用（</span><span class="no">NestJS</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="no">React</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="no">Drizzle</span><span class="w"> </span><span class="err">+</span><span class="w"> </span><span class="err">托管</span><span class="w"> </span><span class="no">Postgres</span><span class="err">）</span>
+<span class="nf">scripts</span><span class="err">/</span><span class="w">       </span><span class="err">守护进程编排（</span><span class="no">bridge-start</span><span class="err">/</span><span class="no">stop</span><span class="err">/</span><span class="no">status.sh</span><span class="err">）+</span><span class="w"> </span><span class="no">systemd</span><span class="w"> </span><span class="err">模板</span>
+<span class="nf">db</span><span class="err">/</span><span class="no">schema.sql</span><span class="w">  </span><span class="err">妙搭托管</span><span class="w"> </span><span class="no">Postgres</span><span class="w"> </span><span class="err">建表</span><span class="w"> </span><span class="no">DDL</span><span class="err">（</span><span class="no">install.sh</span><span class="w"> </span><span class="err">在</span><span class="w"> </span><span class="no">dev</span><span class="w"> </span><span class="err">库执行）</span>
+<span class="nf">install.sh</span><span class="w">     </span><span class="err">一键安装器</span>
+<span class="nf">docs</span><span class="err">/</span><span class="w">          </span><span class="err">安装与设计文档</span>
+<span class="na">.env.example</span><span class="w">   </span><span class="err">环境变量样板（复制为</span><span class="w"> </span><span class="no">.env.local</span><span class="err">）</span>
+</code></pre></div>
+
+<h2 id="doc-概览-_6">运行（日常）<a class="anchor" href="#doc-概览-_6" title="Permanent link">🔗</a></h2>
+<div class="codehilite"><pre><span></span><code>./scripts/bridge-start.sh<span class="w">           </span><span class="c1"># 守护进程：index 60s / tail 实时 / inject 轮询</span>
+./scripts/bridge-status.sh
+./scripts/bridge-stop.sh
+./scripts/bridge-start.sh<span class="w"> </span>--once<span class="w">    </span><span class="c1"># 一次性快照</span>
+
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>index<span class="w">              </span><span class="c1"># 单步：session 索引 → sessions 表</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>tail<span class="w"> </span>--all<span class="w">         </span><span class="c1"># 单步：tail 所有 session events</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>inject<span class="w"> </span>--once<span class="w">      </span><span class="c1"># 单步：消费待办指令</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>ls<span class="w">                 </span><span class="c1"># 查 sessions 表</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>lock<span class="w">               </span><span class="c1"># 查当前 live 在线 session</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>events<span class="w"> </span>--session<span class="w"> </span>&lt;id&gt;<span class="w">   </span><span class="c1"># 查某 session 的事件</span>
+</code></pre></div>
+
+<p>日志在 <code>~/.copilot-bridge/logs/</code>，offset 状态在 <code>~/.copilot-bridge/bridge-state.db</code>。</p>
+<h2 id="doc-概览-app">改飞书应用（<code>app/</code>）<a class="anchor" href="#doc-概览-app" title="Permanent link">🔗</a></h2>
+<ul>
+<li>改前端/后端 → <code>cd app &amp;&amp; CLIENT_BASE_PATH=/app/&lt;app_id&gt; npm run build:client</code> → <code>git push origin sprint/default</code> → <code>lark-cli apps +release-create --profile &lt;p&gt; --as user --app-id &lt;id&gt; --branch sprint/default</code> → 轮询 <code>+release-get</code> 至 finished。</li>
+<li>DB 变更：dev 用 <code>lark-cli apps +db-execute --env dev</code> DDL → <code>npm run gen:db-schema</code> → release 自动迁移到 online（online 禁 DDL）。</li>
+</ul>
+<h2 id="doc-概览-_7">安全<a class="anchor" href="#doc-概览-_7" title="Permanent link">🔗</a></h2>
+<ul>
+<li>Bridge 写 DB 走 <code>lark-cli</code>（出站，无监听端口），不暴露 DB 凭证到服务器进程环境以外。</li>
+<li>指令注入带高危标志（<code>--allow-all-tools</code> / <code>--dangerously-skip-permissions</code> 等），受 <code>COPILOT_BRIDGE_ALLOW_OPEN_IDS</code> 白名单闸门——仅指定飞书用户能发指令。</li>
+<li><code>.env.local</code>、本地 state（sqlite/日志/pid）均已 gitignore，勿提交。</li>
+<li>License：MIT（见 <code>LICENSE</code>）。</li>
+</ul>
+<h2 id="doc-概览-_8">已知限制<a class="anchor" href="#doc-概览-_8" title="Permanent link">🔗</a></h2>
+<ul>
+<li>强依赖飞书妙搭平台；禁用飞书的组织不适用。</li>
+<li>Codex CLI 的中间对话回合没有"回合结束"事件，发送锁对其靠"idle 静默"兜底判定（不如 Claude/Copilot 精确）。</li>
+<li>注入离线会话用 headless resume，是追加一轮而非真正"接管"终端；live 会话才支持真正的双向实时键入。</li>
+</ul>
+<h2 id="doc-概览-_9">开发文档<a class="anchor" href="#doc-概览-_9" title="Permanent link">🔗</a></h2>
+<ul>
+<li><a href="docs/INSTALL.md">docs/INSTALL.md</a> — 人工安装详解</li>
+<li><a href="docs/INSTALL_FOR_AGENT.md">docs/INSTALL_FOR_AGENT.md</a> — 让 agent 帮你安装</li>
+<li><a href="docs/DESIGN.md">docs/DESIGN.md</a> — 架构设计原档</li>
+<li><a href="docs/REQUIREMENTS.md">docs/REQUIREMENTS.md</a> — 需求与用户故事</li>
+<li><a href="docs/PLAN.md">docs/PLAN.md</a> — 实施里程碑</li>
+</ul>
+</section><section class="doc" id="doc-安装指南人工">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-安装指南人工-_1">安装指南（人工分步）<a class="anchor" href="#doc-安装指南人工-_1" title="Permanent link">🔗</a></h1>
+<blockquote>
+<p>想省事直接跑 <code>./install.sh</code>（见 README）。本文档是给想逐步理解/手动执行的人，也是 <code>install.sh</code> 失败时的排错参考。</p>
+<p>如果你想让一个 AI agent 帮你装，看 <a href="INSTALL_FOR_AGENT.md">INSTALL_FOR_AGENT.md</a>。</p>
+</blockquote>
+<p>整个安装分两块：<strong>A. 服务器侧</strong>（Bridge 守护进程）和 <strong>B. 飞书侧</strong>（妙搭 full_stack 应用）。两边通过同一个托管 Postgres 中继。</p>
+<hr />
+<h2 id="doc-安装指南人工-_2">前置总览<a class="anchor" href="#doc-安装指南人工-_2" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>服务器</td>
+<td>内网 Linux（Ubuntu/Debian 或 RHEL 系），能出站访问飞书域名</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>≥ 3.10（Bridge 纯标准库，无需 pip 安装第三方包）</td>
+</tr>
+<tr>
+<td>Node.js</td>
+<td>≥ 22（装 lark-cli + 构建妙搭应用）</td>
+</tr>
+<tr>
+<td>系统工具</td>
+<td><code>tmux</code>、<code>sqlite3</code>、<code>git</code>、<code>curl</code></td>
+</tr>
+<tr>
+<td>lark-cli</td>
+<td>npm 全局安装，需用一个 profile 授权 <code>spark:app:read/write</code> 等</td>
+</tr>
+<tr>
+<td>agent CLI</td>
+<td><code>copilot</code> / <code>claude</code> / <code>codex</code> 任选其一或全部（各自已登录）</td>
+</tr>
+<tr>
+<td>飞书账号</td>
+<td>能创建妙搭 full_stack 应用（个人/企业账号均可）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="doc-安装指南人工-a">A. 服务器侧<a class="anchor" href="#doc-安装指南人工-a" title="Permanent link">🔗</a></h2>
+<h3 id="doc-安装指南人工-a1">A1. 装系统依赖<a class="anchor" href="#doc-安装指南人工-a1" title="Permanent link">🔗</a></h3>
+<p>Ubuntu/Debian：</p>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>apt-get<span class="w"> </span>update
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>tmux<span class="w"> </span>sqlite3<span class="w"> </span>python3<span class="w"> </span>git<span class="w"> </span>curl
+</code></pre></div>
+
+<p>RHEL/Alibaba/Anolis 系：</p>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>tmux<span class="w"> </span>sqlite<span class="w"> </span>python3<span class="w"> </span>git<span class="w"> </span>curl
+</code></pre></div>
+
+<p>Python 版本检查：<code>python3 --version</code>（需 ≥ 3.10）。</p>
+<h3 id="doc-安装指南人工-a2-nodejs-22">A2. 装 Node.js ≥ 22<a class="anchor" href="#doc-安装指南人工-a2-nodejs-22" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://deb.nodesource.com/setup_22.x<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>-E<span class="w"> </span>bash<span class="w"> </span>-
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>nodejs<span class="w">   </span><span class="c1"># 或 yum install -y nodejs</span>
+node<span class="w"> </span>--version<span class="w">   </span><span class="c1"># 应 ≥ v22</span>
+</code></pre></div>
+
+<h3 id="doc-安装指南人工-a3-lark-cli">A3. 装 lark-cli 并登录飞书<a class="anchor" href="#doc-安装指南人工-a3-lark-cli" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@larksuiteoapi/lark-cli
+lark-cli<span class="w"> </span>--version
+</code></pre></div>
+
+<p>登录用 device flow（profile 名自取，下面用 <code>hermes</code>）：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1) 启动 device flow，拿到 verification_url + device_code</span>
+lark-cli<span class="w"> </span>auth<span class="w"> </span>login<span class="w"> </span>--domain<span class="w"> </span>apps<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--no-wait<span class="w"> </span>--json
+<span class="c1"># 输出里会有 verification_url 和 device_code</span>
+
+<span class="c1"># 2) 浏览器打开 verification_url，用飞书 App 扫码授权</span>
+
+<span class="c1"># 3) 扫码完成后收尾</span>
+lark-cli<span class="w"> </span>auth<span class="w"> </span>login<span class="w"> </span>--device-code<span class="w"> </span>&lt;device_code&gt;<span class="w"> </span>--profile<span class="w"> </span>hermes
+
+<span class="c1"># 4) 验证</span>
+lark-cli<span class="w"> </span>auth<span class="w"> </span>status<span class="w"> </span>--profile<span class="w"> </span>hermes
+<span class="c1"># identities.user.status 应为 &quot;ready&quot;</span>
+</code></pre></div>
+
+<blockquote>
+<p>lark-cli 1.0.59 有个 profile bug：<code>apps +git-credential-init</code> 内部子调用不透传 <code>--profile</code>，会导致 git push 报 <code>current login does not match initialized credential</code>。本文档 A6 会用带 <code>--profile</code> 的 credential helper 绕开。建议升级到 1.0.61+。</p>
+</blockquote>
+<h3 id="doc-安装指南人工-a4-agent-cli">A4. 装 agent CLI（按需）<a class="anchor" href="#doc-安装指南人工-a4-agent-cli" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@github/copilot<span class="w">           </span><span class="c1"># GitHub Copilot CLI</span>
+sudo<span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@anthropic-ai/claude-code<span class="w"> </span><span class="c1"># Claude Code</span>
+sudo<span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@openai/codex<span class="w">             </span><span class="c1"># OpenAI Codex</span>
+</code></pre></div>
+
+<p>每个 CLI 第一次运行要各自登录（按提示）。装了哪个，Bridge 就管哪个；不装也行。</p>
+<h3 id="doc-安装指南人工-a5">A5. 取本仓库<a class="anchor" href="#doc-安装指南人工-a5" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>&lt;this-repo-url&gt;<span class="w"> </span>agentcli_bridge
+<span class="nb">cd</span><span class="w"> </span>agentcli_bridge
+</code></pre></div>
+
+<hr />
+<h2 id="doc-安装指南人工-b-full_stack">B. 飞书侧（妙搭 full_stack 应用）<a class="anchor" href="#doc-安装指南人工-b-full_stack" title="Permanent link">🔗</a></h2>
+<h3 id="doc-安装指南人工-b1">B1. 创建应用<a class="anchor" href="#doc-安装指南人工-b1" title="Permanent link">🔗</a></h3>
+<p>命令行创建（推荐）：</p>
+<div class="codehilite"><pre><span></span><code>lark-cli<span class="w"> </span>apps<span class="w"> </span>+create<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;AgentCLI Bridge&quot;</span><span class="w"> </span>--app-type<span class="w"> </span>full_stack<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--description<span class="w"> </span><span class="s2">&quot;Remote view/control of LAN agent CLI sessions&quot;</span>
+<span class="c1"># 输出里有 app_id（形如 app_xxxxxxxxxxxxx）</span>
+</code></pre></div>
+
+<p>或在飞书「妙搭」控制台手动创建一个 full_stack 应用，记下 app_id。</p>
+<p>记下 <code>APP_ID</code>，后面到处用。</p>
+<h3 id="doc-安装指南人工-b2-git">B2. 初始化 git 凭证 + 拿仓库地址<a class="anchor" href="#doc-安装指南人工-b2-git" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">APP_ID</span><span class="o">=</span>app_xxxxxxxxxxxxx<span class="w">   </span><span class="c1"># 换成你的</span>
+lark-cli<span class="w"> </span>apps<span class="w"> </span>+git-credential-init<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span>
+
+<span class="c1"># 拿仓库 URL</span>
+lark-cli<span class="w"> </span>apps<span class="w"> </span>+git-credential-list<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user
+<span class="c1"># 找到 app_id 对应的 repository_url，形如</span>
+<span class="c1"># https://miaoda-git.feishu.cn/apaas4.0/-/t_xxx/code_xxx.git</span>
+</code></pre></div>
+
+<h3 id="doc-安装指南人工-b3">B3. 推送应用代码<a class="anchor" href="#doc-安装指南人工-b3" title="Permanent link">🔗</a></h3>
+<p>仓库里的 <code>app/</code> 目录就是妙搭应用源码。把它作为独立 git 仓库推到上一步的 repository_url：</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>app
+git<span class="w"> </span>init<span class="w"> </span>-q
+git<span class="w"> </span>branch<span class="w"> </span>-m<span class="w"> </span>sprint/default
+git<span class="w"> </span>remote<span class="w"> </span>add<span class="w"> </span>origin<span class="w"> </span>&lt;repository_url&gt;
+git<span class="w"> </span>add<span class="w"> </span>-A
+git<span class="w"> </span>-c<span class="w"> </span>user.email<span class="o">=</span>bridge@local<span class="w"> </span>-c<span class="w"> </span>user.name<span class="o">=</span>bridge<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;initial: AgentCLI Bridge app&quot;</span>
+git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>sprint/default
+<span class="nb">cd</span><span class="w"> </span>..
+</code></pre></div>
+
+<blockquote>
+<p>如果 push 报 <code>current login does not match initialized credential</code>，是 lark-cli 没带 profile。手动把 credential helper 写成带 profile 的：
+<code>bash
+git config --global "credential.&lt;repository_url&gt;.helper" \
+  "!lark-cli apps git-credential-helper --profile hermes --app-id '$APP_ID'"
+git config --global "credential.&lt;repository_url&gt;.useHttpPath" true</code>
+再 <code>cd app &amp;&amp; git push -u origin sprint/default</code>。</p>
+</blockquote>
+<h3 id="doc-安装指南人工-b4">B4. 装应用依赖<a class="anchor" href="#doc-安装指南人工-b4" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>app
+npm<span class="w"> </span>ci<span class="w">            </span><span class="c1"># 或 npm install</span>
+<span class="nb">cd</span><span class="w"> </span>..
+</code></pre></div>
+
+<h3 id="doc-安装指南人工-b5-dev">B5. 建表（dev 库）<a class="anchor" href="#doc-安装指南人工-b5-dev" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>lark-cli<span class="w"> </span>apps<span class="w"> </span>+db-execute<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--env<span class="w"> </span>dev<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--sql<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>cat<span class="w"> </span>db/schema.sql<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>--yes
+</code></pre></div>
+
+<p><code>db/schema.sql</code> 建 4 张表：<code>sessions</code> / <code>events</code> / <code>commands</code> / <code>renames</code>。</p>
+<h3 id="doc-安装指南人工-b6-schema">B6. 反生成 schema + 提交<a class="anchor" href="#doc-安装指南人工-b6-schema" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>app
+npm<span class="w"> </span>run<span class="w"> </span>gen:db-schema<span class="w">   </span><span class="c1"># 从 dev 库反生成 server/database/schema.ts</span>
+git<span class="w"> </span>add<span class="w"> </span>-A<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;db: schema&quot;</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>sprint/default
+<span class="nb">cd</span><span class="w"> </span>..
+</code></pre></div>
+
+<h3 id="doc-安装指南人工-b7-schema-online">B7. 发布（迁移 schema 到 online）<a class="anchor" href="#doc-安装指南人工-b7-schema-online" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">REL</span><span class="o">=</span><span class="k">$(</span>lark-cli<span class="w"> </span>apps<span class="w"> </span>+release-create<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--branch<span class="w"> </span>sprint/default<span class="k">)</span>
+<span class="nv">RID</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$REL</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sys,json;print(json.load(sys.stdin)[&quot;data&quot;][&quot;release_id&quot;])&#39;</span><span class="k">)</span>
+
+<span class="c1"># 轮询至 finished（约 90s）</span>
+<span class="k">while</span><span class="w"> </span>true<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>lark-cli<span class="w"> </span>apps<span class="w"> </span>+release-get<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--release-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RID</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sys,json;s=json.load(sys.stdin)[&quot;data&quot;][&quot;status&quot;];print(s);exit(0 if s in (&quot;finished&quot;,&quot;failed&quot;,&quot;succeeded&quot;) else 1)&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">break</span>
+<span class="w">  </span>sleep<span class="w"> </span><span class="m">10</span>
+<span class="k">done</span>
+</code></pre></div>
+
+<p><code>finished</code> 后，online 库已有这 4 张表，应用也在飞书云上线了。</p>
+<hr />
+<h2 id="doc-安装指南人工-c-bridge">C. 配置 + 启动 Bridge<a class="anchor" href="#doc-安装指南人工-c-bridge" title="Permanent link">🔗</a></h2>
+<h3 id="doc-安装指南人工-c1-envlocal">C1. 写 <code>.env.local</code><a class="anchor" href="#doc-安装指南人工-c1-envlocal" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>cat<span class="w"> </span>&gt;<span class="w"> </span>.env.local<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">COPILOT_BRIDGE_APP_ID=$APP_ID</span>
+<span class="s">COPILOT_BRIDGE_PROFILE=hermes</span>
+<span class="s">COPILOT_BRIDGE_DB_ENV=online</span>
+<span class="s">COPILOT_BRIDGE_ALLOW_OPEN_IDS=</span>
+<span class="s">EOF</span>
+</code></pre></div>
+
+<h3 id="doc-安装指南人工-c2-user-id">C2. 找你的飞书 user id（发指令白名单）<a class="anchor" href="#doc-安装指南人工-c2-user-id" title="Permanent link">🔗</a></h3>
+<p><code>ALLOW_OPEN_IDS</code> 是允许发指令的飞书用户。先留空，<strong>从飞书发一条消息</strong>到应用里（会被拒绝），再到服务器查：</p>
+<div class="codehilite"><pre><span></span><code>lark-cli<span class="w"> </span>apps<span class="w"> </span>+db-execute<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--env<span class="w"> </span>online<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--yes<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sql<span class="w"> </span><span class="s2">&quot;SELECT DISTINCT sender_open_id FROM commands WHERE result LIKE &#39;forbidden%&#39;&quot;</span>
+</code></pre></div>
+
+<p>把查到的 id 填进 <code>.env.local</code> 的 <code>COPILOT_BRIDGE_ALLOW_OPEN_IDS</code>（多个用逗号分隔），重启 Bridge。</p>
+<blockquote>
+<p>这是应用作用域内的 user_id（不是 <code>ou_...</code> open_id），由妙搭平台注入（<code>req.userContext.userId</code>）。</p>
+</blockquote>
+<h3 id="doc-安装指南人工-c3">C3. 启动<a class="anchor" href="#doc-安装指南人工-c3" title="Permanent link">🔗</a></h3>
+<p>手动：</p>
+<div class="codehilite"><pre><span></span><code>./scripts/bridge-start.sh
+./scripts/bridge-status.sh
+</code></pre></div>
+
+<p>systemd（生产）：</p>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>cp<span class="w"> </span>scripts/agentcli-bridge.service<span class="w"> </span>/etc/systemd/system/
+<span class="c1"># 编辑该文件，把 __USER__ / __ROOT__ 换成实际值（或直接跑 install.sh 自动生成）</span>
+sudo<span class="w"> </span>systemctl<span class="w"> </span>daemon-reload
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>agentcli-bridge
+</code></pre></div>
+
+<h3 id="doc-安装指南人工-c4">C4. 验证<a class="anchor" href="#doc-安装指南人工-c4" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>ls<span class="w">      </span><span class="c1"># 应看到本机各 agent 的 session</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>lock<span class="w">    </span><span class="c1"># 应看到 live 在线 session</span>
+</code></pre></div>
+
+<p>在飞书（手机或桌面）→ 工作台 → 妙搭应用 → AgentCLI Bridge，即可看到会话列表。</p>
+<hr />
+<h2 id="doc-安装指南人工-_3">排错速查<a class="anchor" href="#doc-安装指南人工-_3" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>现象</th>
+<th>排查</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bridge ls</code> 报 db-execute 错</td>
+<td>检查 <code>.env.local</code> 的 APP_ID/PROFILE；<code>lark-cli auth status --profile hermes</code> 是否 user ready</td>
+</tr>
+<tr>
+<td>飞书里发指令被拒</td>
+<td><code>ALLOW_OPEN_IDS</code> 没填你的 user id（见 C2）</td>
+</tr>
+<tr>
+<td>git push 报 credential 不匹配</td>
+<td>credential helper 没带 <code>--profile hermes</code>（见 B3 注）</td>
+</tr>
+<tr>
+<td>release 卡住/failed</td>
+<td>妙搭控制台看构建日志；通常是 <code>schema.ts</code> 与 dev 库不一致，重跑 B6</td>
+</tr>
+<tr>
+<td>live 会话发指令 CLI 没反应</td>
+<td>agent 进程不在 tmux 里，或 cwd 对不上（见 <code>bridge/agents/live.py</code> 的检测逻辑）；会回退到 headless resume</td>
+</tr>
+<tr>
+<td>Codex 中间对话回合发送锁迟钝</td>
+<td>Codex 无每回合结束事件，靠 idle 兜底（已知限制，见 README）</td>
+</tr>
+</tbody>
+</table>
+<p>日志：<code>~/.copilot-bridge/logs/{index,tail,inject}.log</code>。</p>
+</section><section class="doc" id="doc-安装交给-agent">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-安装交给-agent-ai-agent">给 AI Agent 的安装任务说明<a class="anchor" href="#doc-安装交给-agent-ai-agent" title="Permanent link">🔗</a></h1>
+<blockquote>
+<p>这是一份<strong>写给 AI agent</strong>（Claude Code / Copilot / Codex 等）看的安装 runbook。终端用户把它丢给你，你在他的内网服务器上把 AgentCLI Bridge 装起来。</p>
+<p>你（agent）的目标：在一台内网 Linux 服务器上完成 AgentCLI Bridge 的端到端安装，让它跑起来并验证。过程中<strong>只有一处必须由人类介入</strong>：用飞书 App 扫码授权 lark-cli。其余全部由你完成。</p>
+</blockquote>
+<h2 id="doc-安装交给-agent-_1">你需要知道的项目事实<a class="anchor" href="#doc-安装交给-agent-_1" title="Permanent link">🔗</a></h2>
+<ul>
+<li><strong>架构</strong>：Bridge（Python，纯标准库）跑在服务器，纯出站经 <code>lark-cli apps +db-execute</code> 写飞书妙搭托管的 Postgres；一个妙搭 full_stack 应用（<code>app/</code> 目录）读同一 DB 渲染 UI。服务器无公网 IP、无入站端口。</li>
+<li><strong>仓库布局</strong>：<code>bridge/</code>（Python 守护进程）、<code>app/</code>（妙搭应用源码，需作为独立 git 仓库推到妙搭 git）、<code>db/schema.sql</code>（建表 DDL）、<code>scripts/</code>（启停）、<code>install.sh</code>（一键脚本，已实现本文档大部分逻辑）。</li>
+<li><strong>已知的 lark-cli 坑</strong>（1.0.59，本机实测）：</li>
+<li><code>apps</code> 域所有子命令必须 <code>--as user</code>（<code>--as bot</code> 被拒）。</li>
+<li><code>apps +git-credential-init</code> 内部子调用不透传 <code>--profile</code>，导致 <code>git push</code> 报 <code>current login does not match initialized credential</code>。<strong>绕法</strong>：手动把全局 git credential helper 写成带 <code>--profile &lt;p&gt;</code> 的版本（见步骤 6）。</li>
+<li>默认 profile 的 device flow 坏了（<code>client_secret</code> 缺失）。<strong>用 <code>--profile hermes</code> 跑</strong>就正常。</li>
+<li><code>db-execute</code> 的 SELECT 也要 <code>--yes</code>（high-risk）。</li>
+<li>db-execute 返回结构：SELECT 的行在 <code>data.results[*].data</code>（一个 JSON 字符串），不是 <code>data.rows</code>。</li>
+<li><strong>Python 无第三方依赖</strong>：不要装 pip 包；<code>bridge/</code> 全是标准库。</li>
+<li><strong>Codex/Claude/Copilot 的 headless 注入</strong>需要各自的高危标志（<code>--dangerously-bypass-approvals-and-sandbox</code> / <code>IS_SANDBOX=1 --dangerously-skip-permissions</code> / <code>--allow-all-tools</code>），这些由 Bridge 代码自己加，<strong>你不需要</strong>在安装时处理。</li>
+</ul>
+<h2 id="doc-安装交给-agent-_2">执行策略<a class="anchor" href="#doc-安装交给-agent-_2" title="Permanent link">🔗</a></h2>
+<p><strong>首选</strong>：直接跑 <code>./install.sh</code>。它已实现下述全部步骤、是幂等的、带阶段跳过。你的主要工作是：</p>
+<ol>
+<li>先 <code>git clone</code> 仓库并 <code>cd</code> 进去。</li>
+<li>跑 <code>./install.sh</code>，在它停在"扫码授权"那一步时，<strong>把 verification_url 摆给人类</strong>，等他扫码完成后让脚本继续。</li>
+<li>如果 <code>install.sh</code> 某阶段失败，按下面"分步"对应章节排错，修完重跑（已完成的阶段会跳过）。</li>
+</ol>
+<p><code>install.sh</code> 支持的 flag：<code>--skip-app</code>（只装服务器侧，应用你自己搞过）、<code>--skip-systemd</code>、<code>--app-id &lt;id&gt;</code>（复用已有应用）。</p>
+<p><strong>只有在 <code>install.sh</code> 不适用或你想逐步控制时</strong>，才按下述分步执行。</p>
+<hr />
+<h2 id="doc-安装交给-agent-installsh">分步执行（install.sh 失败时的人工等价物）<a class="anchor" href="#doc-安装交给-agent-installsh" title="Permanent link">🔗</a></h2>
+<h3 id="doc-安装交给-agent-0">0. 前置检查<a class="anchor" href="#doc-安装交给-agent-0" title="Permanent link">🔗</a></h3>
+<ul>
+<li>OS：读 <code>/etc/os-release</code> 的 <code>ID</code>。Ubuntu/Debian 用 apt；RHEL/Alibaba/Anolis/CentOS 用 yum。</li>
+<li>你需要有 sudo 权限（装系统包、npm 全局包、systemd unit）。</li>
+<li>不要 <code>echo</code>/打印任何 <code>~/.copilot/config.json</code> 内容——里面有 GitHub token。</li>
+</ul>
+<h3 id="doc-安装交给-agent-1">1. 系统依赖<a class="anchor" href="#doc-安装交给-agent-1" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># apt 系</span>
+sudo<span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>tmux<span class="w"> </span>sqlite3<span class="w"> </span>python3<span class="w"> </span>git<span class="w"> </span>curl
+<span class="c1"># yum 系</span>
+sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>tmux<span class="w"> </span>sqlite<span class="w"> </span>python3<span class="w"> </span>git<span class="w"> </span>curl
+python3<span class="w"> </span>--version<span class="w">   </span><span class="c1"># 需 ≥ 3.10</span>
+</code></pre></div>
+
+<h3 id="doc-安装交给-agent-2-node-22">2. Node ≥ 22<a class="anchor" href="#doc-安装交给-agent-2-node-22" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>node<span class="w"> </span>-p<span class="w"> </span><span class="s1">&#39;process.versions.node.split(&quot;.&quot;)[0]&#39;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w">  </span><span class="c1"># 若 ≥22 跳过</span>
+<span class="c1"># apt 系</span>
+curl<span class="w"> </span>-fsSL<span class="w"> </span>https://deb.nodesource.com/setup_22.x<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>-E<span class="w"> </span>bash<span class="w"> </span>-
+sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>nodejs
+<span class="c1"># yum 系</span>
+curl<span class="w"> </span>-fsSL<span class="w"> </span>https://rpm.nodesource.com/setup_22.x<span class="w"> </span><span class="p">|</span><span class="w"> </span>sudo<span class="w"> </span>-E<span class="w"> </span>bash<span class="w"> </span>-
+sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>nodejs
+</code></pre></div>
+
+<h3 id="doc-安装交给-agent-3-lark-cli">3. lark-cli + 登录<a class="anchor" href="#doc-安装交给-agent-3-lark-cli" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>@larksuiteoapi/lark-cli
+<span class="c1"># 检查是否已登录</span>
+lark-cli<span class="w"> </span>auth<span class="w"> </span>status<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sys,json;d=json.load(sys.stdin);print(d[&quot;identities&quot;][&quot;user&quot;].get(&quot;available&quot;))&#39;</span>
+</code></pre></div>
+
+<p>若不是 True，做 device flow：</p>
+<div class="codehilite"><pre><span></span><code>lark-cli<span class="w"> </span>auth<span class="w"> </span>login<span class="w"> </span>--domain<span class="w"> </span>apps<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--no-wait<span class="w"> </span>--json
+<span class="c1"># 解析输出里的 verification_url 和 device_code</span>
+<span class="c1"># ⬇️ 把 verification_url 给人类，让他用飞书 App 扫码 ⬇️</span>
+lark-cli<span class="w"> </span>auth<span class="w"> </span>login<span class="w"> </span>--device-code<span class="w"> </span>&lt;device_code&gt;<span class="w"> </span>--profile<span class="w"> </span>hermes
+lark-cli<span class="w"> </span>auth<span class="w"> </span>status<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w">   </span><span class="c1"># 复核 identities.user.status == ready</span>
+</code></pre></div>
+
+<p><strong>这是唯一必须人类介入的步骤。</strong> 不要尝试跳过或自动化扫码。</p>
+<h3 id="doc-安装交给-agent-4-agent-cli">4. agent CLI 检测（只检测，不强制装）<a class="anchor" href="#doc-安装交给-agent-4-agent-cli" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="k">for</span><span class="w"> </span>a<span class="w"> </span><span class="k">in</span><span class="w"> </span>copilot<span class="w"> </span>claude<span class="w"> </span>codex<span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span><span class="nv">$a</span><span class="w"> </span>&gt;/dev/null<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$a</span><span class="s2"> ok&quot;</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$a</span><span class="s2"> missing&quot;</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+</code></pre></div>
+
+<p>缺失的就报给人类，让他自己装+登录（每个 CLI 各有登录流程，你不要替他登）。</p>
+<h3 id="doc-安装交给-agent-5">5. 创建妙搭应用<a class="anchor" href="#doc-安装交给-agent-5" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>lark-cli<span class="w"> </span>apps<span class="w"> </span>+create<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;AgentCLI Bridge&quot;</span><span class="w"> </span>--app-type<span class="w"> </span>full_stack<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--description<span class="w"> </span><span class="s2">&quot;Remote view/control of LAN agent CLI sessions&quot;</span>
+<span class="c1"># 解析输出 data.app_id，记为 APP_ID</span>
+</code></pre></div>
+
+<p>若失败（平台限流/权限），让人类在妙搭控制台手动建 full_stack 应用，把 app_id 给你，跳到步骤 6。</p>
+<h3 id="doc-安装交给-agent-6-git">6. git 凭证 + 仓库地址<a class="anchor" href="#doc-安装交给-agent-6-git" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">APP_ID</span><span class="o">=</span>app_xxx
+lark-cli<span class="w"> </span>apps<span class="w"> </span>+git-credential-init<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span>
+<span class="nv">REPO_URL</span><span class="o">=</span><span class="k">$(</span>lark-cli<span class="w"> </span>apps<span class="w"> </span>+git-credential-list<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import sys,json;d=json.load(sys.stdin);print([c[&#39;repository_url&#39;] for c in d[&#39;data&#39;][&#39;credentials&#39;] if c[&#39;app_id&#39;]==&#39;</span><span class="nv">$APP_ID</span><span class="s2">&#39;][0])&quot;</span><span class="k">)</span>
+<span class="c1"># 关键：把 credential helper 改成带 --profile 的（绕开 lark-cli 1.0.59 bug）</span>
+git<span class="w"> </span>config<span class="w"> </span>--global<span class="w"> </span><span class="s2">&quot;credential.</span><span class="nv">$REPO_URL</span><span class="s2">.helper&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;!lark-cli apps git-credential-helper --profile hermes --app-id &#39;</span><span class="nv">$APP_ID</span><span class="s2">&#39;&quot;</span>
+git<span class="w"> </span>config<span class="w"> </span>--global<span class="w"> </span><span class="s2">&quot;credential.</span><span class="nv">$REPO_URL</span><span class="s2">.useHttpPath&quot;</span><span class="w"> </span><span class="nb">true</span>
+</code></pre></div>
+
+<h3 id="doc-安装交给-agent-7">7. 推送应用代码<a class="anchor" href="#doc-安装交给-agent-7" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>app
+<span class="o">[[</span><span class="w"> </span>-d<span class="w"> </span>.git<span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">{</span><span class="w"> </span>git<span class="w"> </span>init<span class="w"> </span>-q<span class="p">;</span><span class="w"> </span>git<span class="w"> </span>branch<span class="w"> </span>-m<span class="w"> </span>sprint/default<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span>git<span class="w"> </span>checkout<span class="w"> </span>-q<span class="w"> </span>-b<span class="w"> </span>sprint/default<span class="p">;</span><span class="w"> </span><span class="o">}</span>
+git<span class="w"> </span>remote<span class="w"> </span>remove<span class="w"> </span>origin<span class="w"> </span><span class="m">2</span>&gt;/dev/null
+git<span class="w"> </span>remote<span class="w"> </span>add<span class="w"> </span>origin<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$REPO_URL</span><span class="s2">&quot;</span>
+git<span class="w"> </span>add<span class="w"> </span>-A
+git<span class="w"> </span>-c<span class="w"> </span>user.email<span class="o">=</span>bridge@local<span class="w"> </span>-c<span class="w"> </span>user.name<span class="o">=</span>bridge<span class="w"> </span>commit<span class="w"> </span>-q<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;initial: AgentCLI Bridge app&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>sprint/default
+<span class="nb">cd</span><span class="w"> </span>..
+</code></pre></div>
+
+<h3 id="doc-安装交给-agent-8-schema">8. 装应用依赖 + 建表 + 反生成 schema + 发布<a class="anchor" href="#doc-安装交给-agent-8-schema" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>app<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>ci<span class="w"> </span>--no-audit<span class="w"> </span>--no-fund<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>..
+
+<span class="c1"># 建 dev 表</span>
+lark-cli<span class="w"> </span>apps<span class="w"> </span>+db-execute<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--env<span class="w"> </span>dev<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--sql<span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>cat<span class="w"> </span>db/schema.sql<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span>--yes
+
+<span class="c1"># 反生成 schema.ts</span>
+<span class="nb">cd</span><span class="w"> </span>app<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>gen:db-schema
+git<span class="w"> </span>add<span class="w"> </span>-A<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>-c<span class="w"> </span>user.email<span class="o">=</span>bridge@local<span class="w"> </span>-c<span class="w"> </span>user.name<span class="o">=</span>bridge<span class="w"> </span>commit<span class="w"> </span>-q<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;db: schema&quot;</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null
+git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>sprint/default
+<span class="nb">cd</span><span class="w"> </span>..
+
+<span class="c1"># 发布（迁移 dev schema → online，约 90s）</span>
+<span class="nv">RID</span><span class="o">=</span><span class="k">$(</span>lark-cli<span class="w"> </span>apps<span class="w"> </span>+release-create<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--branch<span class="w"> </span>sprint/default<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sys,json;print(json.load(sys.stdin)[&quot;data&quot;][&quot;release_id&quot;])&#39;</span><span class="k">)</span>
+<span class="c1"># 轮询</span>
+<span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>seq<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">20</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<span class="w">  </span>sleep<span class="w"> </span><span class="m">10</span>
+<span class="w">  </span><span class="nv">ST</span><span class="o">=</span><span class="k">$(</span>lark-cli<span class="w"> </span>apps<span class="w"> </span>+release-get<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--release-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RID</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="p">|</span><span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sys,json;print(json.load(sys.stdin)[&quot;data&quot;][&quot;status&quot;])&#39;</span><span class="k">)</span>
+<span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;[</span><span class="nv">$i</span><span class="s2">] </span><span class="nv">$ST</span><span class="s2">&quot;</span>
+<span class="w">  </span><span class="o">[[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ST</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">==</span><span class="w"> </span>finished<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ST</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">==</span><span class="w"> </span>failed<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ST</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">==</span><span class="w"> </span>succeeded<span class="w"> </span><span class="o">]]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">break</span>
+<span class="k">done</span>
+<span class="c1"># ST 必须是 finished/succeeded</span>
+</code></pre></div>
+
+<h3 id="doc-安装交给-agent-9-envlocal">9. 写 .env.local<a class="anchor" href="#doc-安装交给-agent-9-envlocal" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>cat<span class="w"> </span>&gt;<span class="w"> </span>.env.local<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">COPILOT_BRIDGE_APP_ID=$APP_ID</span>
+<span class="s">COPILOT_BRIDGE_PROFILE=hermes</span>
+<span class="s">COPILOT_BRIDGE_DB_ENV=online</span>
+<span class="s">COPILOT_BRIDGE_ALLOW_OPEN_IDS=</span>
+<span class="s">EOF</span>
+</code></pre></div>
+
+<p><code>ALLOW_OPEN_IDS</code> 先留空——见步骤 11。</p>
+<h3 id="doc-安装交给-agent-10-systemd">10. 启动 + systemd<a class="anchor" href="#doc-安装交给-agent-10-systemd" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 若是 root 且有 systemd</span>
+<span class="nv">UNIT</span><span class="o">=</span>/etc/systemd/system/agentcli-bridge.service
+cat<span class="w"> </span>&gt;<span class="w"> </span><span class="nv">$UNIT</span><span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+<span class="s">[Unit]</span>
+<span class="s">Description=AgentCLI Bridge</span>
+<span class="s">After=network-online.target</span>
+<span class="s">Wants=network-online.target</span>
+<span class="s">[Service]</span>
+<span class="s">Type=forking</span>
+<span class="s">User=$(whoami)</span>
+<span class="s">WorkingDirectory=$(pwd)</span>
+<span class="s">Environment=PATH=/usr/local/bin:/usr/bin:/bin</span>
+<span class="s">EnvironmentFile=$(pwd)/.env.local</span>
+<span class="s">ExecStart=$(pwd)/scripts/bridge-start.sh</span>
+<span class="s">ExecStop=$(pwd)/scripts/bridge-stop.sh</span>
+<span class="s">PIDFile=$HOME/.copilot-bridge/bridge.pids</span>
+<span class="s">Restart=on-failure</span>
+<span class="s">[Install]</span>
+<span class="s">WantedBy=multi-user.target</span>
+<span class="s">EOF</span>
+systemctl<span class="w"> </span>daemon-reload
+systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>--now<span class="w"> </span>agentcli-bridge
+<span class="c1"># 否则：./scripts/bridge-start.sh</span>
+</code></pre></div>
+
+<h3 id="doc-安装交给-agent-11-user-id">11. 验证 + 找 user id<a class="anchor" href="#doc-安装交给-agent-11-user-id" title="Permanent link">🔗</a></h3>
+<div class="codehilite"><pre><span></span><code>./scripts/bridge-start.sh<span class="w"> </span>--once<span class="w">    </span><span class="c1"># 冒烟</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>ls<span class="w">                  </span><span class="c1"># 应列出版本机各 agent 的 session</span>
+python<span class="w"> </span>-m<span class="w"> </span>bridge<span class="w"> </span>lock<span class="w">                </span><span class="c1"># live 在线 session</span>
+</code></pre></div>
+
+<p>然后告诉人类：去飞书打开应用，发一条消息（会被拒）。之后你查：</p>
+<div class="codehilite"><pre><span></span><code>lark-cli<span class="w"> </span>apps<span class="w"> </span>+db-execute<span class="w"> </span>--profile<span class="w"> </span>hermes<span class="w"> </span>--as<span class="w"> </span>user<span class="w"> </span>--env<span class="w"> </span>online<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--app-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--yes<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sql<span class="w"> </span><span class="s2">&quot;SELECT DISTINCT sender_open_id FROM commands WHERE result LIKE &#39;forbidden%&#39;&quot;</span>
+</code></pre></div>
+
+<p>把查到的 id 填进 <code>.env.local</code> 的 <code>COPILOT_BRIDGE_ALLOW_OPEN_IDS</code>，重启 bridge（<code>systemctl restart agentcli-bridge</code> 或 <code>./scripts/bridge-stop.sh &amp;&amp; ./scripts/bridge-start.sh</code>）。</p>
+<h3 id="doc-安装交给-agent-12">12. 收尾报告给人类<a class="anchor" href="#doc-安装交给-agent-12" title="Permanent link">🔗</a></h3>
+<ul>
+<li>应用打开方式：飞书 → 工作台 → 妙搭应用 → AgentCLI Bridge。</li>
+<li>若 <code>ALLOW_OPEN_IDS</code> 仍空，明确告诉他发指令会被拒，按步骤 11 补。</li>
+<li>指向 <code>README.md</code> / <code>docs/INSTALL.md</code> 做日常运维。</li>
+</ul>
+<hr />
+<h2 id="doc-安装交给-agent-_3">硬性约束（不要违反）<a class="anchor" href="#doc-安装交给-agent-_3" title="Permanent link">🔗</a></h2>
+<ul>
+<li>不要打印或泄露 <code>~/.copilot/config.json</code>、<code>.env.local</code>、git 凭证内容。</li>
+<li>不要替人类做飞书扫码登录（步骤 3）——把 URL 给他，等他扫。</li>
+<li>不要替人类做 agent CLI 的账号登录（步骤 4）。</li>
+<li><code>db-execute</code> 一律带 <code>--profile hermes --as user --yes</code>。</li>
+<li>online 库<strong>禁止 DDL</strong>；DDL 只在 <code>--env dev</code> 跑（步骤 8 的建表）。</li>
+<li>不要装 Python 第三方包；<code>bridge/</code> 是纯标准库。</li>
+<li>任何阶段失败：把<strong>原始错误</strong>报给人类，不要静默继续；可重试幂等步骤。</li>
+</ul>
+</section><section class="doc" id="doc-架构设计">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-架构设计-design">架构设计（Design）<a class="anchor" href="#doc-架构设计-design" title="Permanent link">🔗</a></h1>
+<blockquote>
+<p>2026-07-01 修订：交互形态从"飞书群+话题文本命令"改为"飞书妙搭 full_stack 应用 + DB 中继"。该架构已用 spike 端到端验证（见文末"spike 验证记录"）。</p>
+</blockquote>
+<h2 id="doc-架构设计-_1">一句话<a class="anchor" href="#doc-架构设计-_1" title="Permanent link">🔗</a></h2>
+<p>一个跑在 LAN 服务器上的 <strong>Bridge 守护进程</strong>（出站 only）把本机 Copilot session 的对话事件写进<strong>飞书妙搭托管的 Postgres</strong>；一个部署在飞书云上的<strong>妙搭 full_stack 应用</strong>（NestJS+React）读同一个 DB，在飞书客户端里渲染成"像操作软件"的会话管理界面；手机端发指令写回 DB，Bridge 轮询取出注入 Copilot。</p>
+<h2 id="doc-架构设计-_2">总体架构<a class="anchor" href="#doc-架构设计-_2" title="Permanent link">🔗</a></h2>
+<div class="codehilite"><pre><span></span><code>   ┌──────────────── 服务器 (LAN, 无公网IP, 不能穿透) ────────────────┐
+   │                                                                  │
+   │  [Bridge 守护进程]  (Python, 常驻)                                │
+   │   ┌──────────┬───────────┬──────────────┐                       │
+   │   │ Indexer  │  Tailer   │  Injector    │                       │
+   │   │ (sessions│ (events   │ (commands    │                       │
+   │   │  表)     │  表)      │  轮询)       │                       │
+   │   └────┬─────┴─────┬─────┴───────┬──────┘                       │
+   │        │ 读 ↓       │ 读 ↓       │ 写 ↓                         │
+   │   session-store.db  events.jsonl  copilot -p --resume / tmux     │
+   │   inuse.&lt;pid&gt;.lock                                                │
+   │                                                                   │
+   │   全部经 lark-cli apps +db-execute （出站 HTTPS）                 │
+   └──────────────────────────┬───────────────────────────────────────┘
+                              │ 出站 only（无入站端口）
+                              ▼
+   ┌──────────────── 飞书云 (妙搭 aPaaS) ────────────────────────────┐
+   │                                                                  │
+   │  妙搭 full_stack app  (app_id: 见实施)                            │
+   │   ┌─────────────────────────────────────────────┐                │
+   │   │ NestJS 后端 (Drizzle ORM)                    │                │
+   │   │   GET /api/sessions   → sessions 表          │                │
+   │   │   GET /api/events     → events 表 (按 session)│                │
+   │   │   POST /api/commands  → commands 表           │                │
+   │   │   (可选) GET /api/stream → SSE 推新事件       │                │
+   │   ├─────────────────────────────────────────────┤                │
+   │   │ React 前端 (axiosForBackend)                 │                │
+   │   │   会话列表页 / 对话详情页 / 指令输入          │                │
+   │   └─────────────────────────────────────────────┘                │
+   │   托管 Postgres:  sessions / events / commands 表                │
+   │   平台注入: DB 凭证(DRIZZLE_DATABASE) + 用户身份(req.userContext) │
+   └──────────────────────────┬──────────────────────────────────────┘
+                              │ 手机/桌面飞书客户端打开
+                              ▼
+                      飞书工作台 / URL
+</code></pre></div>
+
+<p><strong>关键性质</strong>：bridge 纯出站（<code>lark-cli</code> 长连/HTTPS），无入站端口、无公网 IP、无穿透；手机任意网络打开飞书即可；前端不持密钥（平台注入 DB 凭证），无需自建鉴权后端（平台注入飞书 open_id）。</p>
+<h2 id="doc-架构设计-_3">两个部分<a class="anchor" href="#doc-架构设计-_3" title="Permanent link">🔗</a></h2>
+<h3 id="doc-架构设计-a-bridge-lan-python">A. Bridge 守护进程（LAN 服务器，Python）<a class="anchor" href="#doc-架构设计-a-bridge-lan-python" title="Permanent link">🔗</a></h3>
+<p>四个组件（保留原 DESIGN 职责，输出端从"飞书群消息"改为"妙搭 DB 表"）：</p>
+<ol>
+<li><strong>Indexer（会话索引）</strong></li>
+<li>读 <code>~/.copilot/session-store.db</code> 的 <code>sessions</code> 表 → id/cwd/summary/updated_at。</li>
+<li>扫 <code>session-state/*/inuse.&lt;pid&gt;.lock</code> 校验 pid 存活 → 在线状态。</li>
+<li>
+<p>全量/增量 upsert 进妙搭 <code>sessions</code> 表（<code>lark-cli apps +db-execute</code>，INSERT ... ON CONFLICT）。</p>
+</li>
+<li>
+<p><strong>Tailer（读方向，实时同步对话）</strong></p>
+</li>
+<li>对被"关注"的 session，tail <code>events.jsonl</code>，按 <strong>byte offset</strong> 增量读（offset 持久化在本地，不进 DB）。</li>
+<li>解析事件 → 格式化为行 → 批量写进妙搭 <code>events</code> 表（按 ~1s 聚批，一条 <code>db-execute</code> 多行 INSERT，降 subprocess 次数）。</li>
+<li>
+<p>零侵入：只读文件，服务器终端里发起的对话同样被捕获。</p>
+</li>
+<li>
+<p><strong>Injector（写方向，发送指令）</strong></p>
+</li>
+<li>轮询妙搭 <code>commands</code> 表（<code>db-execute SELECT ... WHERE consumed=false</code>，~1-2s 一次）。</li>
+<li>拿到未消费指令 → 按 lock 状态二选一：<ul>
+<li>离线 session：<code>copilot -p "&lt;指令&gt;" --resume &lt;id&gt; --output-format json --allow-all-tools</code></li>
+<li>在线活跃 session（tmux 托管）：<code>tmux send-keys -t &lt;target&gt; "&lt;指令&gt;" Enter</code></li>
+</ul>
+</li>
+<li>
+<p>标记 commands 行 consumed + 写入对应 session 的 events（resume 的 JSONL 输出复用 Tailer 格式化逻辑）。</p>
+</li>
+<li>
+<p><strong>Mapper/权限</strong>（轻量）</p>
+</li>
+<li>飞书用户身份由平台 <code>req.userContext</code> 注入，前端发指令时 open_id 随 commands 行入库；Bridge 侧校验 open_id 白名单（复用 feishu-remote 的 pin）。</li>
+<li>session ↔ 飞书用户的关联在前端处理（列表页选 session），无需群/话题映射。</li>
+</ol>
+<h3 id="doc-架构设计-b-full_stack-nestjsreactdrizzle">B. 妙搭 full_stack 应用（飞书云，NestJS+React+Drizzle）<a class="anchor" href="#doc-架构设计-b-full_stack-nestjsreactdrizzle" title="Permanent link">🔗</a></h3>
+<ul>
+<li><strong>后端</strong>：NestJS 路由读 <code>sessions</code>/<code>events</code> 表（Drizzle），平台注入 <code>DRIZZLE_DATABASE</code>。可选 SSE（<code>GET /api/stream?session_id=</code>）把新事件推前端（准实时，优于前端轮询）。</li>
+<li><strong>前端</strong>：React（<code>axiosForBackend</code>，自动带 <code>CLIENT_BASE_PATH</code> 前缀+CSRF+凭证）。会话列表页 → 点进对话详情页（事件流）→ 底部输入框发指令（POST <code>commands</code> 表）。</li>
+<li><strong>DB schema</strong>：见下。</li>
+<li><strong>鉴权</strong>：平台自动（飞书 open_id），无需自建。访问范围设 tenant 或 specific(白名单 open_id)。</li>
+</ul>
+<h2 id="doc-架构设计-schema-postgres">数据库 schema（妙搭托管 Postgres）<a class="anchor" href="#doc-架构设计-schema-postgres" title="Permanent link">🔗</a></h2>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- 会话索引</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">sessions</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">id</span><span class="w">           </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span><span class="w">        </span><span class="c1">-- copilot session id</span>
+<span class="w">  </span><span class="n">cwd</span><span class="w">          </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">  </span><span class="n">summary</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">  </span><span class="n">updated_at</span><span class="w">   </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                     </span><span class="c1">-- ISO 字符串</span>
+<span class="w">  </span><span class="n">online</span><span class="w">       </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">FALSE</span><span class="p">,</span><span class="w">    </span><span class="c1">-- pid 存活</span>
+<span class="w">  </span><span class="n">pid</span><span class="w">          </span><span class="nb">INT</span><span class="p">,</span>
+<span class="w">  </span><span class="n">indexed_at</span><span class="w">   </span><span class="nb">TEXT</span><span class="w">                      </span><span class="c1">-- bridge 最近一次刷新时间</span>
+<span class="p">);</span>
+
+<span class="c1">-- 对话事件流（一行 = 一个 event）</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">events</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">seq</span><span class="w">          </span><span class="nb">BIGINT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span><span class="w">       </span><span class="c1">-- 全局自增或 snowflake</span>
+<span class="w">  </span><span class="n">session_id</span><span class="w">   </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">  </span><span class="k">type</span><span class="w">         </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                      </span><span class="c1">-- user.message/assistant.message/tool.*/result</span>
+<span class="w">  </span><span class="k">role</span><span class="w">         </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                      </span><span class="c1">-- user/assistant/tool</span>
+<span class="w">  </span><span class="n">content</span><span class="w">      </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                      </span><span class="c1">-- 格式化后的人类可读文本</span>
+<span class="w">  </span><span class="n">raw</span><span class="w">          </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                      </span><span class="c1">-- 原始 JSON（可选，用于回显结构）</span>
+<span class="w">  </span><span class="n">ts</span><span class="w">           </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                      </span><span class="c1">-- 事件 timestamp</span>
+<span class="w">  </span><span class="n">turn_id</span><span class="w">      </span><span class="nb">TEXT</span>
+<span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_events_session</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">events</span><span class="w"> </span><span class="p">(</span><span class="n">session_id</span><span class="p">,</span><span class="w"> </span><span class="n">seq</span><span class="p">);</span>
+
+<span class="c1">-- 指令队列（前端写、bridge 消费）</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">commands</span><span class="w"> </span><span class="p">(</span>
+<span class="w">  </span><span class="n">id</span><span class="w">           </span><span class="nb">BIGINT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">  </span><span class="n">session_id</span><span class="w">   </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">  </span><span class="n">content</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">  </span><span class="n">sender_open_id</span><span class="w"> </span><span class="nb">TEXT</span><span class="p">,</span><span class="w">                   </span><span class="c1">-- 发指令的飞书用户</span>
+<span class="w">  </span><span class="n">created_at</span><span class="w">   </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">  </span><span class="n">consumed</span><span class="w">     </span><span class="nb">BOOLEAN</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="k">FALSE</span><span class="p">,</span>
+<span class="w">  </span><span class="n">consumed_at</span><span class="w">  </span><span class="nb">TEXT</span><span class="p">,</span>
+<span class="w">  </span><span class="k">result</span><span class="w">       </span><span class="nb">TEXT</span><span class="w">                       </span><span class="c1">-- 可选：执行结果摘要回写</span>
+<span class="p">);</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="n">idx_commands_pending</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">commands</span><span class="w"> </span><span class="p">(</span><span class="n">consumed</span><span class="p">)</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">consumed</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">false</span><span class="p">;</span>
+</code></pre></div>
+
+<blockquote>
+<p>建表流程（实测）：dev 用 <code>db-execute</code> DDL → <code>fullstack-cli gen-db-schema</code> 反生成 <code>schema.ts</code> → <strong>release 时平台自动迁移到 online</strong>（online 禁 DDL，DML 允许）。DML（INSERT/SELECT/UPDATE）两端都允许。</p>
+</blockquote>
+<h2 id="doc-架构设计-_4">实时性策略<a class="anchor" href="#doc-架构设计-_4" title="Permanent link">🔗</a></h2>
+<ul>
+<li><strong>读方向（事件 → 前端）</strong>：Tailer ~1s 聚批写库；前端用 SSE（NestJS 推）或 1-2s 轮询 <code>GET /api/events?since=&lt;seq&gt;</code>。SSE 优先（同源、平台注入身份可用）。</li>
+<li><strong>写方向（指令 → bridge）</strong>：前端 POST <code>commands</code> 表（即时）；Bridge 1-2s 轮询未消费指令。延迟可接受（非实时控制场景）。</li>
+<li>如需更低延迟，bridge 侧可用 <code>lark-cli event consume im.message.receive_v1</code> 让前端改发飞书消息推指令（push），但一期用轮询足够。</li>
+</ul>
+<h2 id="doc-架构设计-_5">为什么是这个方案<a class="anchor" href="#doc-架构设计-_5" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>备选</th>
+<th>否/缓理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>飞书群+话题文本命令（原 A）</td>
+<td>交互像聊天机器人，非"操作软件"；已放弃。</td>
+</tr>
+<tr>
+<td>微信小程序</td>
+<td>正式版要 ICP 备案域名+HTTPS；个人自用仅体验版+调试模式可绕，但每次开调试、且 bridge 要被手机连。一期不做。</td>
+</tr>
+<tr>
+<td>飞书 H5 + bridge 作 HTTP/WS 服务端</td>
+<td>体验最好，但 bridge 要被手机直连 → 需公网/穿透，违反"纯内网"。</td>
+</tr>
+<tr>
+<td>官方 <code>--remote</code>/<code>--acp</code></td>
+<td>绑 GitHub App，不适配飞书；<code>--acp</code> 适合自建前端深度集成但更重。列为后续备选。</td>
+</tr>
+<tr>
+<td><strong>妙搭 full_stack + DB 中继（本方案）</strong></td>
+<td>bridge 纯出站、无公网 IP；前端真应用 UI、平台托管鉴权与 DB；spike 已验证全链路。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="doc-架构设计-_6">风险与对策<a class="anchor" href="#doc-架构设计-_6" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>风险</th>
+<th>对策</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db-execute</code> 每次 subprocess 开销</td>
+<td>Tailer 聚批（~1s 一条多行 INSERT）；Injector 轮询用单条 SELECT。监控 QPS。</td>
+</tr>
+<tr>
+<td>online DB DDL 禁止</td>
+<td>dev 建表 + gen-db-schema + release 迁移；schema 变更走 release。</td>
+</tr>
+<tr>
+<td><code>db-execute</code> SELECT 也要 <code>--yes</code></td>
+<td>bridge 调用统一带 <code>--yes</code>。</td>
+</tr>
+<tr>
+<td>database_url 过期（env-pull 有 expires_at）</td>
+<td>NestJS 侧用平台注入的连接（自动刷新）；bridge 侧走 <code>db-execute</code>（经 spark API，不直连 DB URL），不受影响——M1 验证。</td>
+</tr>
+<tr>
+<td>events 表膨胀</td>
+<td>按 session 归档/清理；前端按 <code>since=seq</code> 增量拉；长输出截断+分片入库。</td>
+</tr>
+<tr>
+<td>并发写活 session</td>
+<td>lock 门控：活走 tmux，闲走 resume。</td>
+</tr>
+<tr>
+<td>越权控制</td>
+<td>commands 行带 sender_open_id，bridge 校验白名单。</td>
+</tr>
+<tr>
+<td>长输出刷屏</td>
+<td>content 截断（首/尾 N 字符）+ 折叠工具细节；raw 字段可选保留全量。</td>
+</tr>
+<tr>
+<td>Bridge 崩溃</td>
+<td>Tailer offset 持久化在本地 sqlite；commands 消费幂等（consumed 标记 + 事务）。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="doc-架构设计-_7">技术选型<a class="anchor" href="#doc-架构设计-_7" title="Permanent link">🔗</a></h2>
+<ul>
+<li><strong>Bridge</strong>：Python 3（stdlib sqlite3 + subprocess 调 lark-cli/copilot/tmux；asyncio）。本地自用 SQLite 存 offset/审计。</li>
+<li><strong>妙搭 app</strong>：NestJS + React + Drizzle（平台模板 <code>nestjs-react-fullstack</code>，TS）。</li>
+<li><strong>外部二进制</strong>：<code>copilot</code>、<code>lark-cli</code>、<code>tmux</code>。</li>
+<li><strong>lark-cli profile</strong>：用 <code>hermes</code>（默认 profile 的 device flow 在 1.0.59 坏；建议升 1.0.61）。</li>
+</ul>
+<h2 id="doc-架构设计-spike-2026-07-01">spike 验证记录（2026-07-01）<a class="anchor" href="#doc-架构设计-spike-2026-07-01" title="Permanent link">🔗</a></h2>
+<ul>
+<li>bridge <code>lark-cli apps +db-execute</code> INSERT/SELECT 出站读写妙搭 DB ✅</li>
+<li>妙搭 full_stack = NestJS+React+Drizzle+托管 Postgres ✅</li>
+<li>后端 <code>@Inject(DRIZZLE_DATABASE)</code> 平台注入、前端 <code>axiosForBackend</code> 自动带前缀+CSRF ✅</li>
+<li>release 自动迁移 schema 到 online ✅</li>
+<li>飞书内打开 <code>online_url</code> 看到服务器写入的行 ✅（spike app <code>&lt;your_app_id&gt;</code>，URL <code>https://&lt;your_feishu_domain&gt;/app/&lt;your_app_id&gt;</code>）</li>
+<li>spike 代码在 <code>~/copilot-spike-app</code>（git 仓库 <code>sprint/default</code> 分支），可演进为正式 app。</li>
+</ul>
+</section><section class="doc" id="doc-需求">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-需求-requirements">需求（Requirements）<a class="anchor" href="#doc-需求-requirements" title="Permanent link">🔗</a></h1>
+<h2 id="doc-需求-_1">背景<a class="anchor" href="#doc-需求-_1" title="Permanent link">🔗</a></h2>
+<p>本服务器上运行着 GitHub Copilot CLI（<code>copilot</code>，v1.0.65），日常会在多个项目目录下开多个 session 与 agent 对话。希望像腾讯 WorkBuddy 一样，用手机远程查看并控制这些 session。</p>
+<h2 id="doc-需求-_2">核心用户故事<a class="anchor" href="#doc-需求-_2" title="Permanent link">🔗</a></h2>
+<ol>
+<li><strong>看列表</strong>：在手机上能看到本机当前/历史的各个 Copilot session（项目目录、摘要、最后活跃时间、是否在线）。</li>
+<li><strong>同步对话（读方向）</strong>：</li>
+<li>在服务器终端里用 agent 对话时，手机端能<strong>实时</strong>看到同一 session 的对话进度（用户消息、assistant 回复、工具调用/结果）。</li>
+<li>双向一致：不管对话是从服务器发起还是从手机发起，两端看到的历史一致。</li>
+<li><strong>发指令（写方向）</strong>：在手机上选中某个 session，发送文本指令，让该 session 的 agent 继续执行，并把结果实时回传到手机。</li>
+</ol>
+<h2 id="doc-需求-_3">平台选择<a class="anchor" href="#doc-需求-_3" title="Permanent link">🔗</a></h2>
+<ul>
+<li><strong>一期只做飞书（Lark），交互形态为"飞书妙搭 full_stack 应用 + DB 中继"</strong>。理由：本机纯内网、无公网 IP、不能穿透，妙搭 app 托管在飞书云、bridge 纯出站经 <code>lark-cli apps +db-execute</code> 写其托管 Postgres，手机任意网络在飞书内打开即可（spike 已端到端验证，见 DESIGN.md）。本机已装 <code>lark-cli</code>（v1.0.59，hermes profile 已授权 <code>spark:app:read/write</code>）。</li>
+<li><strong>不做微信控制</strong>。个人微信自动化违反 ToS 有封号风险；小程序正式版需 ICP 备案域名+HTTPS（个人自用仅体验版+调试模式可绕，但每次开调试、且 bridge 要被手机连）。微信最多后续做"只读通知"（服务号），不纳入一期。</li>
+</ul>
+<h2 id="doc-需求-_4">功能需求<a class="anchor" href="#doc-需求-_4" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>编号</th>
+<th>需求</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FR-1</td>
+<td>列出 session（id/cwd/summary/最后活跃/在线状态）</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-2</td>
+<td>实时同步指定 session 的对话进度到飞书</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-3</td>
+<td>从飞书向指定 session 发送指令并回传结果</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-4</td>
+<td>区分"在线活跃 session"与"离线 session"，选择合适的写入方式</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-5</td>
+<td>权限白名单：仅允许指定飞书用户(open_id)控制</td>
+<td>P0</td>
+</tr>
+<tr>
+<td>FR-6</td>
+<td>长输出/工具结果的截断与格式化</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-7</td>
+<td>断线重连、增量续读（按 offset）</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-8</td>
+<td>会话与飞书群/话题的映射管理</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>FR-9</td>
+<td>微信只读通知（服务号）</td>
+<td>P2（暂不做）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="doc-需求-_5">非功能需求<a class="anchor" href="#doc-需求-_5" title="Permanent link">🔗</a></h2>
+<ul>
+<li><strong>零侵入读</strong>：读方向只读文件，不修改 Copilot CLI 行为。</li>
+<li><strong>低延迟</strong>：入站指令到 agent 执行 &lt; 2s；对话事件到手机 &lt; 2s。</li>
+<li><strong>鲁棒</strong>：Bridge 进程崩溃可重启并从 offset 续读，不丢事件。</li>
+<li><strong>安全</strong>：远程指令携带 <code>--allow-all-tools</code>，必须严格限制来源用户；敏感输出可脱敏。</li>
+<li><strong>可纯内网运行</strong>，不依赖公网入口。</li>
+</ul>
+<h2 id="doc-需求-_6">约束与已知事实（已在本机实测）<a class="anchor" href="#doc-需求-_6" title="Permanent link">🔗</a></h2>
+<ul>
+<li>每个 session：<code>~/.copilot/session-state/&lt;id&gt;/events.jsonl</code>（append-only 实时事件流）。</li>
+<li>全局索引：<code>~/.copilot/session-store.db</code>（<code>sessions</code>/<code>turns</code>/<code>checkpoints</code>/<code>session_files</code> 等表）。</li>
+<li>在线判定：<code>session-state/&lt;id&gt;/inuse.&lt;pid&gt;.lock</code>。</li>
+<li>写入 session：<code>copilot -p "&lt;指令&gt;" --resume &lt;id&gt; --output-format json --allow-all-tools</code>（离线 session 干净恢复上下文，已验证）。</li>
+<li>活跃 session 若要边终端边手机续用，用 <code>tmux send-keys</code> 注入（避免 <code>--resume</code> 与活进程冲突）。</li>
+<li>官方原生远程能力：<code>copilot --remote</code>（GitHub web/mobile 控制）、<code>--acp</code>（ACP/JSON-RPC server）、<code>--connect=&lt;id&gt;</code>——走 GitHub 自家 App，不适配飞书，仅作参考/备选。</li>
+<li>本机已存在 <code>feishu-remote</code> skill（单 session 双向回路已跑通），可作为写方向参考实现。</li>
+</ul>
+</section><section class="doc" id="doc-实施计划">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-实施计划-plan">实施计划（Plan）<a class="anchor" href="#doc-实施计划-plan" title="Permanent link">🔗</a></h1>
+<blockquote>
+<p>2026-07-01 修订：里程碑按妙搭 full_stack + DB 中继架构重排。spike 已验证主干（DB 出站读写、NestJS/React/Drizzle、release 迁移 schema、飞书内打开）。每阶段独立可验证。</p>
+</blockquote>
+<h2 id="doc-实施计划-_1">里程碑总览<a class="anchor" href="#doc-实施计划-_1" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>目标</th>
+<th>交付物</th>
+<th>验证标准</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M0</td>
+<td>调研与 spike</td>
+<td>docs/ + spike app</td>
+<td>✅ 已完成（F2-c 全链路验证）</td>
+</tr>
+<tr>
+<td>M1</td>
+<td>正式 app + DB schema + 列表页骨架</td>
+<td>妙招 app <code>Copilot Bridge</code>、sessions 表/API/列表页</td>
+<td>✅ 已完成（飞书内看到 sessions 表）</td>
+</tr>
+<tr>
+<td>M2</td>
+<td>Indexer（bridge）</td>
+<td><code>bridge index</code> 把 session-store.db 写进 sessions 表</td>
+<td>✅ 已完成（67 真实 session 入库，6 在线）</td>
+</tr>
+<tr>
+<td>M3</td>
+<td>Tailer（bridge）</td>
+<td><code>bridge tail</code> 把 events.jsonl 写进 events 表</td>
+<td>✅ 已完成（51419 事件入库，稳定 id 幂等）</td>
+</tr>
+<tr>
+<td>M4</td>
+<td>前端对话视图 + 准实时</td>
+<td>对话详情页 + 2s 轮询拉 events</td>
+<td>✅ 已完成（两栏聊天 UI 已发布，待用户验证）</td>
+</tr>
+<tr>
+<td>M5</td>
+<td>Injector（写方向）</td>
+<td>commands 表轮询 + copilot resume/tmux</td>
+<td>✅ 已完成（resume 执行 + 白名单拒绝 验证通过）</td>
+</tr>
+<tr>
+<td>M6</td>
+<td>健壮性与体验</td>
+<td>offset 持久化/重连/截断/运维脚本/守护进程</td>
+<td>✅ 已完成（bridge-start/stop/status + systemd，daemon 运行中）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="doc-实施计划-_2">详细任务<a class="anchor" href="#doc-实施计划-_2" title="Permanent link">🔗</a></h2>
+<h3 id="doc-实施计划-m1-app-schema">M1 — 正式 app + schema + 列表页骨架<a class="anchor" href="#doc-实施计划-m1-app-schema" title="Permanent link">🔗</a></h3>
+<ul>
+<li>[ ] 演进 spike app 为正式：<code>apps +update --name "Copilot Bridge"</code>（或新建 app），清理 spike 测试表。</li>
+<li>[ ] dev 建 <code>sessions</code>/<code>events</code>/<code>commands</code> 三表（<code>db-execute</code> DDL）→ <code>fullstack-cli gen-db-schema</code> 生成 <code>schema.ts</code>。</li>
+<li>[ ] NestJS：<code>SessionsModule</code>（<code>GET /api/sessions</code>，Drizzle 查 sessions 表）。</li>
+<li>[ ] React：列表页（<code>axiosForBackend.get('api/sessions')</code> 渲染表格）。</li>
+<li>[ ] push + release（online 自动建表）→ 手动 <code>db-execute INSERT</code> 一条 session → 飞书内打开看到。</li>
+<li>[ ] 验证 <code>db-execute</code> 经 spark API 不受 database_url 过期影响（bridge 长跑前提）。</li>
+</ul>
+<h3 id="doc-实施计划-m2-indexerbridge">M2 — Indexer（bridge 侧）<a class="anchor" href="#doc-实施计划-m2-indexerbridge" title="Permanent link">🔗</a></h3>
+<ul>
+<li>[ ] Python bridge 骨架：配置（app_id、profile=hermes、白名单 open_id）、<code>lark-cli</code> 子进程封装（带 <code>--yes</code>）。</li>
+<li>[ ] 读 <code>~/.copilot/session-store.db</code> 的 <code>sessions</code> 表（sqlite3）。</li>
+<li>[ ] 扫 <code>session-state/*/inuse.&lt;pid&gt;.lock</code> + pid 存活 → online 字段。</li>
+<li>[ ] <code>bridge index</code>：upsert sessions 表（<code>INSERT ... ON CONFLICT(id) DO UPDATE</code>）。</li>
+<li>[ ] 验证：跑 <code>bridge index</code>，飞书列表页出现本机真实 session 列表（id/cwd/summary/online）。</li>
+</ul>
+<h3 id="doc-实施计划-m3-tailerbridge">M3 — Tailer（bridge 侧，读方向）<a class="anchor" href="#doc-实施计划-m3-tailerbridge" title="Permanent link">🔗</a></h3>
+<ul>
+<li>[ ] events.jsonl 增量 tail（byte offset，offset 存本地 sqlite <code>offsets(session_id→bytes)</code>）。</li>
+<li>[ ] 事件解析与格式化（user/assistant/tool/result → content 文本；raw 保留原始 JSON）。</li>
+<li>[ ] 聚批写 events 表（~1s 一条多行 INSERT，<code>db-execute --file</code> 或多值 INSERT）。</li>
+<li>[ ] 验证：服务器终端与一个 session 对话，飞书对话页（或直接 <code>db-execute SELECT</code>）&lt;2s 看到新事件。</li>
+</ul>
+<h3 id="doc-实施计划-m4">M4 — 前端对话视图 + 准实时<a class="anchor" href="#doc-实施计划-m4" title="Permanent link">🔗</a></h3>
+<ul>
+<li>[ ] React 对话详情页：按 session_id 拉 events（<code>GET /api/events?session_id=&amp;since=seq</code>）。</li>
+<li>[ ] <strong>在线 AI 式聊天 UI</strong>（参考 opencode / lobe-chat 的形态）：左侧 session 列表、右侧对话窗（user/assistant 气泡、tool 调用折叠卡、结果卡）、底部指令输入框（POST commands）。按 role 渲染气泡，长内容折叠+展开，工具调用配对 start/complete 显示状态。</li>
+<li>[ ] SSE：NestJS <code>GET /api/stream?session_id=</code> 推新事件（轮询 DB 内推）；或前端 1-2s 轮询作降级。</li>
+<li>[ ] 长输出截断 + 工具细节折叠（前端渲染）。</li>
+<li>[ ] 验证：选 session，终端持续对话，前端准实时刷新。</li>
+</ul>
+<h3 id="doc-实施计划-m5-injector">M5 — Injector（写方向）<a class="anchor" href="#doc-实施计划-m5-injector" title="Permanent link">🔗</a></h3>
+<ul>
+<li>[ ] 前端：对话页底部输入框 → <code>POST /api/commands</code>（写 commands 表，带 sender_open_id）。</li>
+<li>[ ] bridge <code>bridge inject</code>：1-2s 轮询 <code>SELECT * FROM commands WHERE consumed=false</code>。</li>
+<li>[ ] lock 门控：在线走 <code>tmux send-keys</code>，离线走 <code>copilot -p --resume --output-format json --allow-all-tools</code>。</li>
+<li>[ ] 消费幂等：<code>UPDATE commands SET consumed=true, consumed_at=?, result=? WHERE id=? AND consumed=false</code>。</li>
+<li>[ ] resume 的 JSONL 输出复用 M3 格式化逻辑入库。</li>
+<li>[ ] 白名单校验 sender_open_id，越权拒绝并审计。</li>
+<li>[ ] 验证：飞书对离线 session 发指令，看到执行 + 结果回传；在线 session 终端/手机交替发，历史一致。</li>
+</ul>
+<h3 id="doc-实施计划-m6">M6 — 健壮性与体验<a class="anchor" href="#doc-实施计划-m6" title="Permanent link">🔗</a></h3>
+<ul>
+<li>[ ] Tailer offset 持久化 + 崩溃重启续读。</li>
+<li>[ ] bridge 进程守护（systemd / nohup）+ 断线重试。</li>
+<li>[ ] 长输出截断（首/尾 N 字符）、工具结果折叠、敏感输出脱敏。</li>
+<li>[ ] events 表归档/清理策略（按 session/时间）。</li>
+<li>[ ] 运维脚本：<code>bridge start/stop/status</code>、日志。</li>
+<li>[ ] lark-cli 升 1.0.61（消除 profile bug，简化 git/auth 流程）。</li>
+</ul>
+<h2 id="doc-实施计划-mvp">一期 MVP 范围<a class="anchor" href="#doc-实施计划-mvp" title="Permanent link">🔗</a></h2>
+<p>M1 + M2 + M3 + M4 + M5(最小)：
+- 飞书内打开 Copilot Bridge → 看到本机 session 列表 → 点进对话页看实时事件流 → 底部发指令续对话（离线走 resume）。
+- 在线 tmux 路径（M5 在线分支）可后置。</p>
+<h2 id="doc-实施计划-_3">关键决策（已定）<a class="anchor" href="#doc-实施计划-_3" title="Permanent link">🔗</a></h2>
+<ol>
+<li>交互形态：<strong>妙搭 full_stack app + DB 中继</strong>（spike 验证）。</li>
+<li>bridge 语言：<strong>Python</strong>（读 sqlite/jsonl + subprocess 调 lark-cli/copilot/tmux）。</li>
+<li>bridge → DB：<strong><code>lark-cli apps +db-execute</code></strong>（出站、hermes profile、带 <code>--yes</code>）；NestJS 只读 DB + SSE。</li>
+<li>备选（若 subprocess 开销成瓶颈）：bridge 调 NestJS API（需平台 auth gate 对 bridge 路由开例外 + shared secret）——M6 评估。</li>
+<li>lark-cli profile：<strong>hermes</strong>（默认 profile device flow 坏）；建议升 1.0.61。</li>
+<li>实时性：<strong>SSE 优先</strong>，前端轮询降级。</li>
+<li>演进 spike app <code>&lt;your_app_id&gt;</code> 为正式 app（保留已通的 auth/scaffold），重命名 + 清测试数据。</li>
+</ol>
+<h2 id="doc-实施计划-_4">环境依赖（已具备）<a class="anchor" href="#doc-实施计划-_4" title="Permanent link">🔗</a></h2>
+<ul>
+<li><code>copilot</code> v1.0.65、<code>lark-cli</code> v1.0.59（hermes profile 已授权 <code>spark:app:read/write</code>）、<code>tmux</code>（M5 在线分支待确认）、<code>sqlite3</code>、Python 3、Node 24（妙招 app）。</li>
+<li>spike 产物：妙招 app <code>&lt;your_app_id&gt;</code>（已发布）、本地 <code>~/copilot-spike-app</code>（scaffold + git remote）。</li>
+</ul>
+</section><section class="doc" id="doc-injector-规格">
+<div class="doc-anchor-target"></div>
+<h1 id="doc-injector-规格-m5-injector-agent">M5 Injector — 实现规格（给子 agent）<a class="anchor" href="#doc-injector-规格-m5-injector-agent" title="Permanent link">🔗</a></h1>
+<h2 id="doc-injector-规格-_1">目标<a class="anchor" href="#doc-injector-规格-_1" title="Permanent link">🔗</a></h2>
+<p><code>bridge/injector.py</code>：轮询妙搭 <code>commands</code> 表（未消费行）→ 注入对应 Copilot session → 标记已消费 + 回写结果。零侵入写方向（执行 copilot/tmux）。</p>
+<h2 id="doc-injector-规格-_2">依赖（已就绪）<a class="anchor" href="#doc-injector-规格-_2" title="Permanent link">🔗</a></h2>
+<ul>
+<li><code>bridge/lark_db.py</code>：<code>query(sql)</code>, <code>execute(sql)</code>, <code>sql_str(v)</code>。所有 DB 访问走它（hermes profile, online env, --yes）。</li>
+<li><code>bridge/config.py</code>：<code>COPILOT_HOME</code>, <code>SESSION_STATE_DIR</code>, <code>ALLOWED_OPEN_IDS</code>, <code>BRIDGE_STATE_DB</code>。</li>
+<li><code>bridge/state.py</code>（Tailer 已建）：本地 sqlite offset 存储；可复用或新增 <code>audit</code> 表。</li>
+<li>妙招 <code>commands</code> 表（online 已存在）：<code>id BIGINT PK, session_id, content, sender_open_id, created_at, consumed BOOL, consumed_at, result TEXT</code>。</li>
+<li><code>bridge/indexer.py</code> 有 <code>_live_locks() -&gt; {session_id: pid}</code> 可复用判定在线。</li>
+</ul>
+<h2 id="doc-injector-规格-_3">核心逻辑<a class="anchor" href="#doc-injector-规格-_3" title="Permanent link">🔗</a></h2>
+<ol>
+<li><code>poll_once()</code>：</li>
+<li><code>SELECT id, session_id, content, sender_open_id FROM commands WHERE consumed = FALSE ORDER BY id LIMIT 50</code>。</li>
+<li>对每行：<ul>
+<li><strong>白名单校验</strong>：<code>sender_open_id</code> 必须在 <code>config.ALLOWED_OPEN_IDS</code>，否则拒绝（写 result="forbidden: sender not allowed"，标记 consumed + consumed_at，记审计，跳过执行）。</li>
+<li>判定 session 在线：<code>indexer._live_locks()</code> 含该 session_id？</li>
+<li><strong>离线</strong>：<code>copilot -p &lt;content&gt; --resume &lt;session_id&gt; --output-format json --allow-all-tools</code>（在 session 的 cwd 下执行；cwd 从 <code>session-store.db</code> 或妙招 <code>sessions</code> 表查）。headless JSONL 输出。</li>
+<li><strong>在线</strong>（tmux 托管）：<code>tmux send-keys -t &lt;target&gt; &lt;content&gt; Enter</code>（target 命名约定：<code>copilot-&lt;session_id&gt;</code>；若 tmux pane 不存在则降级为离线 resume 并记 result 警告）。</li>
+<li>执行后：<code>UPDATE commands SET consumed=TRUE, consumed_at=&lt;now&gt;, result=&lt;摘要&gt; WHERE id=&lt;id&gt; AND consumed=FALSE</code>（幂等：WHERE consumed=FALSE 防重复消费）。</li>
+<li>result 摘要：离线 resume 取 JSONL 末尾 <code>result</code> 事件的用量/状态；在线 tmux 取 "sent to pane <target>"。</li>
+</ul>
+</li>
+<li>返回处理条数。</li>
+<li>离线 resume 的 JSONL 输出<strong>不要</strong>自己写 events 表（Tailer 会 tail 同一 session 的 events.jsonl 自动捕获 headless 输出——因为 copilot -p --resume 也写 events.jsonl）。确认这一点；若 headless 不写 events.jsonl，则 injector 直接解析 JSONL 调用 <code>lark_db</code> 批量插 events（复用 tailer 的映射逻辑——可 import tailer 的函数）。</li>
+</ol>
+<h2 id="doc-injector-规格-_4">安全<a class="anchor" href="#doc-injector-规格-_4" title="Permanent link">🔗</a></h2>
+<ul>
+<li><code>content</code> 注入 shell 时<strong>必须</strong>用 <code>subprocess.run([...], ...)</code> 列表形式或 <code>shlex.quote</code>，禁止 shell=True 拼接（命令注入）。</li>
+<li><code>--allow-all-tools</code> 只在白名单用户触发时使用。</li>
+<li>超时：resume 默认 600s（长任务可被 abort）。</li>
+<li>审计：本地 <code>bridge-state.db</code> 的 <code>audit(id, session_id, sender, status, ts)</code> 表。</li>
+</ul>
+<h2 id="doc-injector-规格-clibridge__main__py-inject">CLI（<code>bridge/__main__.py</code> 加 <code>inject</code> 命令）<a class="anchor" href="#doc-injector-规格-clibridge__main__py-inject" title="Permanent link">🔗</a></h2>
+<ul>
+<li><code>python -m bridge inject [--once]</code>：<code>--once</code> 处理当前未消费队列一次退出；否则循环（2s 间隔）。</li>
+<li>不要破坏现有 <code>index/ls/lock/tail/events</code> 命令。</li>
+</ul>
+<h2 id="doc-injector-规格-_5">测试<a class="anchor" href="#doc-injector-规格-_5" title="Permanent link">🔗</a></h2>
+<ol>
+<li>手动插一条测试 command（online）：用<strong>专用测试 session</strong> <code>2833f2a6-f4d9-44ef-b09a-65606d181ce6</code>（offline，是我之前 <code>copilot -p "pong"</code> 创建的测试 session，避免打扰真实工作 session）：
+   <code>INSERT INTO commands (id, session_id, content, sender_open_id, created_at, consumed) VALUES (&lt;id&gt;, '2833f2a6-f4d9-44ef-b09a-65606d181ce6', 'reply with exactly: pong from bridge', '&lt;your_user_id&gt;', &lt;now ISO&gt;, FALSE)</code>。
+   id 用 <code>Date.now()*1000+random</code> 风格的大整数。</li>
+<li><code>python -m bridge inject --once</code> → 应执行 copilot resume，commands 行 consumed=TRUE + result 有摘要。</li>
+<li>验证 events：<code>python -m bridge events --session 2833f2a6-f4d9-44ef-b09a-65606d181ce6</code> 看到 resume 产生的新事件（user.message "reply with exactly: pong from bridge" + assistant.message 回复）。注意：Tailer 守护进程若在跑会自动捕获；若没跑，injector 自己解析 JSONL 输出插 events（见"核心逻辑"第 2 步的说明）。</li>
+<li>白名单：插一条 sender_open_id 不在白名单的 command → inject 应拒绝执行、标记 consumed + result="forbidden: sender ..."。</li>
+<li>确认 <code>python -m bridge index/ls/lock/tail/events</code> 无回归。</li>
+</ol>
+<h2 id="doc-injector-规格-_6">约束<a class="anchor" href="#doc-injector-规格-_6" title="Permanent link">🔗</a></h2>
+<ul>
+<li>只改 <code>bridge/injector.py</code> + <code>bridge/__main__.py</code>（加 inject 命令）+ 可选 <code>bridge/state.py</code>（加 audit 表，若已存在则兼容）。</li>
+<li>不碰 <code>~/copilot-spike-app</code>（飞书 app，主在改）。</li>
+<li>不碰 <code>bridge/tailer.py</code>（如需复用映射函数，import 它的公开函数，不要改它）。</li>
+<li>风格：type hints, <code>from __future__ import annotations</code>, <code>logging.getLogger(__name__)</code>。</li>
+</ul>
+</section>
+  </main>
+</div>
+<button class="back-to-top" aria-label="回到顶部">↑</button>
+<script>
+const sidebar = document.querySelector('.sidebar');
+document.querySelector('.menu-btn').addEventListener('click', () => sidebar.classList.toggle('open'));
+// Close sidebar on nav click (mobile)
+sidebar.addEventListener('click', e => { if(e.target.closest('a') && window.innerWidth <= 900) sidebar.classList.remove('open'); });
+
+// Scrollspy: highlight the nav item for the section currently in view.
+const headings = Array.from(document.querySelectorAll('.content h2[id], .content h3[id]'));
+const navLinks = Array.from(document.querySelectorAll('.sidebar a.sub'));
+const byId = {};
+navLinks.forEach(a => { const h = a.getAttribute('href'); if(h && h.startsWith('#')) byId[h.slice(1)] = a; });
+const setActive = id => { navLinks.forEach(a => a.classList.remove('active')); if(byId[id]) byId[id].classList.add('active'); };
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) setActive(e.target.id); });
+}, {rootMargin: '-72px 0px -70% 0px'});
+headings.forEach(h => io.observe(h));
+
+// Search: filter nav items by text.
+const sinput = document.querySelector('.search input');
+sinput.addEventListener('input', () => {
+  const q = sinput.value.trim().toLowerCase();
+  document.querySelectorAll('.doc-group').forEach(g => {
+    let any = false;
+    g.querySelectorAll('a.sub').forEach(a => {
+      const m = !q || a.textContent.toLowerCase().includes(q);
+      a.style.display = m ? '' : 'none'; if(m) any = true;
+    });
+    const gtitle = g.querySelector('.gtitle');
+    const gmatch = !q || gtitle.textContent.toLowerCase().includes(q);
+    g.style.display = (any || gmatch) ? '' : 'none';
+  });
+});
+
+// Back-to-top.
+const btt = document.querySelector('.back-to-top');
+window.addEventListener('scroll', () => btt.classList.toggle('show', window.scrollY > 600));
+btt.addEventListener('click', () => window.scrollTo({top:0, behavior:'smooth'}));
+</script>
+</body>
+</html>
