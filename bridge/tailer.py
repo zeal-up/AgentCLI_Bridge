@@ -17,6 +17,7 @@ from typing import Any
 from . import lark_db
 from . import state
 from .agents import AGENTS, adapter_for_session, AgentAdapter
+from .redact import redact_text
 
 log = logging.getLogger(__name__)
 
@@ -94,9 +95,15 @@ def tail_session(session_id: str, once: bool = False, adapter: AgentAdapter | No
         nonlocal pending_rows, batch_time, total_inserted
         if not pending_rows:
             return
-        _flush_rows(pending_rows)
-        total_inserted += len(pending_rows)
-        log.debug("flushed %d rows for session %s", len(pending_rows), session_id)
+        attempted = len(pending_rows)
+        inserted = _flush_rows(pending_rows)
+        total_inserted += inserted
+        log.debug(
+            "flushed %d rows for session %s (%d inserted)",
+            attempted,
+            session_id,
+            inserted,
+        )
         pending_rows = []
         batch_time = time.time()
         state.set_offset(session_id, offset)
@@ -136,7 +143,7 @@ def tail_session(session_id: str, once: bool = False, adapter: AgentAdapter | No
                         # id hashes for idempotency).
                         key = base_key if i == 0 else f"{base_key}\x1f#{i}"
                         eid = _gen_id(key)
-                        pending_rows.append((eid, session_id, role, content, ts))
+                        pending_rows.append((eid, session_id, role, redact_text(content), ts))
 
                     # Turn-complete marker: emit a synthetic system row so the
                     # page's send-lock can release on a real signal instead of
@@ -178,7 +185,10 @@ def tail_session(session_id: str, once: bool = False, adapter: AgentAdapter | No
     if pending_rows:
         _do_flush()
 
-    log.info("session %s: inserted %d event rows", session_id, total_inserted)
+    if total_inserted:
+        log.info("session %s: inserted %d event rows", session_id, total_inserted)
+    else:
+        log.debug("session %s: inserted 0 event rows", session_id)
     return total_inserted
 
 
@@ -186,13 +196,29 @@ def tail_session(session_id: str, once: bool = False, adapter: AgentAdapter | No
 # All-session tailer (all adapters)
 # ---------------------------------------------------------------------------
 
+def _discover_tail_ids_safe(adapter: AgentAdapter) -> list[str]:
+    try:
+        return adapter.discover_tail_ids()
+    except Exception:
+        log.exception("adapter %s: failed to discover tail sessions", adapter.name)
+        return []
+
+
+def _tail_session_safe(session_id: str, adapter: AgentAdapter) -> int:
+    try:
+        return tail_session(session_id, once=True, adapter=adapter)
+    except Exception:
+        log.exception("session %s: tail pass failed", session_id)
+        return 0
+
+
 def tail_all(once: bool = False) -> int:
     """Tail all discovered sessions across all adapters."""
     total = 0
     if once:
         for adapter in AGENTS:
-            for sid in adapter.discover_tail_ids():
-                total += tail_session(sid, once=True, adapter=adapter)
+            for sid in _discover_tail_ids_safe(adapter):
+                total += _tail_session_safe(sid, adapter)
         log.info("tail_all once: %d rows across all agents", total)
         return total
 
@@ -200,8 +226,8 @@ def tail_all(once: bool = False) -> int:
     while True:
         any_new = False
         for adapter in AGENTS:
-            for sid in adapter.discover_tail_ids():
-                n = tail_session(sid, once=True, adapter=adapter)
+            for sid in _discover_tail_ids_safe(adapter):
+                n = _tail_session_safe(sid, adapter)
                 if n > 0:
                     any_new = True
                 total += n

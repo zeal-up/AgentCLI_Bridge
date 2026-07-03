@@ -4,6 +4,14 @@ set -euo pipefail
 
 STATE_DIR="${HOME}/.copilot-bridge"
 PIDFILE="${STATE_DIR}/bridge.pids"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ -f "$ROOT/.env.local" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/.env.local"
+  set +a
+fi
 
 if [[ ! -f "$PIDFILE" ]]; then
   echo "bridge: not running (no PID file)."
@@ -25,4 +33,10 @@ done < "$PIDFILE"
 
 echo
 echo "recent events in Miaoda:"
-python3 -m bridge ls 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  {len(d)} sessions')" 2>/dev/null || true
+python3 - <<'PY' 2>/dev/null || true
+from bridge import lark_db
+
+rows = lark_db.query("SELECT COUNT(*) AS n FROM sessions")
+if rows:
+    print(f"  {rows[0]['n']} sessions")
+PY

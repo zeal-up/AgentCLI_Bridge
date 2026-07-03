@@ -9,11 +9,51 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import time
 from typing import Any
 
 from . import config
 
 log = logging.getLogger(__name__)
+
+_MAX_ATTEMPTS = 5
+_RETRY_DELAYS_SEC = (1.0, 2.0, 4.0, 8.0)
+
+
+class DbExecuteError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
+def _extract_json(text: str) -> dict[str, Any] | None:
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            return None
+
+
+def _is_retryable_error(err: dict[str, Any] | None, fallback_text: str = "") -> bool:
+    if not err:
+        err = {}
+    message = str(err.get("message") or fallback_text).lower()
+    return bool(
+        err.get("retryable")
+        or err.get("subtype") == "rate_limit"
+        or err.get("code") == 99991400
+        or "frequency limit" in message
+        or "rate limit" in message
+    )
 
 
 def _run(sql: str, env: str | None = None, timeout: int = 180) -> list[dict]:
@@ -28,14 +68,50 @@ def _run(sql: str, env: str | None = None, timeout: int = 180) -> list[dict]:
         "--yes",
         "--format", "json",
     ]
-    p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    if p.returncode != 0:
-        raise RuntimeError(f"db-execute rc={p.returncode} stderr={p.stderr.strip()[:800]}")
-    obj = json.loads(p.stdout)
-    if not obj.get("ok"):
-        err = obj.get("error", {})
-        raise RuntimeError(f"db-execute error: {err.get('message') or err}")
-    return obj["data"].get("results", [])
+    last_error: DbExecuteError | None = None
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        if p.returncode != 0:
+            body = _extract_json(p.stderr) or _extract_json(p.stdout) or {}
+            err = body.get("error") if isinstance(body.get("error"), dict) else None
+            retryable = _is_retryable_error(err, p.stderr or p.stdout)
+            detail = (p.stderr or p.stdout).strip()[:800]
+            last_error = DbExecuteError(
+                f"db-execute rc={p.returncode} stderr={detail}",
+                retryable=retryable,
+            )
+        else:
+            try:
+                obj = json.loads(p.stdout)
+            except json.JSONDecodeError as exc:
+                raise DbExecuteError(
+                    f"db-execute returned non-JSON stdout: {p.stdout.strip()[:800]}"
+                ) from exc
+
+            if obj.get("ok"):
+                return obj["data"].get("results", [])
+
+            err = obj.get("error", {})
+            retryable = _is_retryable_error(err if isinstance(err, dict) else None)
+            last_error = DbExecuteError(
+                f"db-execute error: {err.get('message') if isinstance(err, dict) else err}",
+                retryable=retryable,
+            )
+
+        if not last_error.retryable or attempt >= _MAX_ATTEMPTS:
+            break
+        delay = _RETRY_DELAYS_SEC[min(attempt - 1, len(_RETRY_DELAYS_SEC) - 1)]
+        log.warning(
+            "db-execute retryable failure on attempt %d/%d; retrying in %.1fs: %s",
+            attempt,
+            _MAX_ATTEMPTS,
+            delay,
+            last_error,
+        )
+        time.sleep(delay)
+
+    assert last_error is not None
+    raise last_error
 
 
 def query(sql: str, env: str | None = None) -> list[dict[str, Any]]:

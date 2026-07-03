@@ -6,6 +6,7 @@ import logging
 
 from . import lark_db
 from .agents import AGENTS
+from .redact import redact_text
 
 log = logging.getLogger(__name__)
 
@@ -38,8 +39,8 @@ def index() -> int:
                 "({id},{ag},{cwd},{sum},{upd},{onl},{pid},{idx},{cu},{cl})".format(
                     id=lark_db.sql_str(sid),
                     ag=lark_db.sql_str(key),
-                    cwd=lark_db.sql_str(s.get("cwd")),
-                    sum=lark_db.sql_str(s.get("summary")),
+                    cwd=lark_db.sql_str(redact_text(s.get("cwd"))),
+                    sum=lark_db.sql_str(redact_text(s.get("summary"))),
                     upd=lark_db.sql_str(s.get("updated_at")),
                     onl="TRUE" if s.get("online") else "FALSE",
                     pid=str(pid) if pid is not None else "NULL",

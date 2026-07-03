@@ -50,7 +50,12 @@ run_tail() {
   if [[ "$ONCE" -eq 1 ]]; then
     python3 -m bridge tail --all --once >>"$LOGDIR/tail.log" 2>&1
   else
-    python3 -m bridge tail --all >>"$LOGDIR/tail.log" 2>&1
+    while true; do
+      python3 -m bridge tail --all >>"$LOGDIR/tail.log" 2>&1
+      rc=$?
+      echo "$(date -Is) tail exited rc=$rc; restarting in 5s" >>"$LOGDIR/tail.log"
+      sleep 5
+    done
   fi
 }
 
@@ -62,6 +67,12 @@ run_inject() {
   fi
 }
 
+start_daemon() {
+  local script="$1"
+  setsid nohup bash -c "$script" bash "$ROOT" "$LOGDIR" >/dev/null 2>&1 </dev/null &
+  echo "$!"
+}
+
 if [[ "$ONCE" -eq 1 ]]; then
   echo "bridge --once: running index + tail + inject once..."
   run_index_loop
@@ -71,13 +82,48 @@ if [[ "$ONCE" -eq 1 ]]; then
   exit 0
 fi
 
-# Daemon mode: launch three background loops
-run_index_loop &
-INDEX_PID=$!
-run_tail &
-TAIL_PID=$!
-run_inject &
-INJECT_PID=$!
+# Daemon mode: launch three independent wrapper processes. The wrappers are
+# nohup'ed so they survive the non-interactive shell that started this script.
+INDEX_PID=$(start_daemon '
+cd "$1"
+if [[ -f "$1/.env.local" ]]; then
+  set -a
+  . "$1/.env.local"
+  set +a
+fi
+while true; do
+  python3 -m bridge index >>"$2/index.log" 2>&1 || true
+  sleep 60
+done
+')
+TAIL_PID=$(start_daemon '
+cd "$1"
+if [[ -f "$1/.env.local" ]]; then
+  set -a
+  . "$1/.env.local"
+  set +a
+fi
+while true; do
+  python3 -m bridge tail --all >>"$2/tail.log" 2>&1
+  rc=$?
+  echo "$(date -Is) tail exited rc=$rc; restarting in 5s" >>"$2/tail.log"
+  sleep 5
+done
+')
+INJECT_PID=$(start_daemon '
+cd "$1"
+if [[ -f "$1/.env.local" ]]; then
+  set -a
+  . "$1/.env.local"
+  set +a
+fi
+while true; do
+  python3 -m bridge inject >>"$2/inject.log" 2>&1
+  rc=$?
+  echo "$(date -Is) inject exited rc=$rc; restarting in 5s" >>"$2/inject.log"
+  sleep 5
+done
+')
 
 echo "$INDEX_PID" > "$PIDFILE"
 echo "$TAIL_PID" >> "$PIDFILE"

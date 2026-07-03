@@ -6,14 +6,16 @@
   python -m bridge tail --all [--once]            # tail all sessions' events
   python -m bridge events --session <id> [--limit N]  # query Miaoda events table
   python -m bridge inject [--once]  # poll commands table and inject into sessions
+  python -m bridge redact-db        # redact sensitive-looking persisted text
 """
 from __future__ import annotations
 import json
 import logging
 import sys
 
-from . import indexer, lark_db, config, tailer, injector
+from . import indexer, lark_db, config, tailer, injector, redact_db
 from .agents import AGENTS
+from .redact import redact_text
 
 
 def _setup_logging() -> None:
@@ -37,6 +39,7 @@ def main(argv: list[str]) -> int:
             "SELECT id, agent, cwd, summary, online, pid, updated_at, indexed_at "
             "FROM sessions ORDER BY updated_at DESC"
         )
+        rows = _redact_rows(rows)
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         print(f"({len(rows)} rows)")
         return 0
@@ -57,8 +60,23 @@ def main(argv: list[str]) -> int:
     if cmd == "inject":
         return _cmd_inject(argv[2:])
 
-    print(f"unknown command: {cmd!r} (try: index, ls, lock, tail, events, inject)", file=sys.stderr)
+    if cmd == "redact-db":
+        counts = redact_db.redact_existing_rows()
+        print(json.dumps(counts, indent=2, ensure_ascii=False))
+        return 0
+
+    print(
+        f"unknown command: {cmd!r} (try: index, ls, lock, tail, events, inject, redact-db)",
+        file=sys.stderr,
+    )
     return 2
+
+
+def _redact_rows(rows: list[dict]) -> list[dict]:
+    return [
+        {key: redact_text(value) if isinstance(value, str) else value for key, value in row.items()}
+        for row in rows
+    ]
 
 
 def _cmd_tail(args: list[str]) -> int:
@@ -136,6 +154,7 @@ def _cmd_events(args: list[str]) -> int:
         f"ORDER BY ts LIMIT {limit}"
     )
     rows = lark_db.query(sql)
+    rows = _redact_rows(rows)
     print(json.dumps(rows, indent=2, ensure_ascii=False))
     print(f"({len(rows)} rows)")
     return 0
