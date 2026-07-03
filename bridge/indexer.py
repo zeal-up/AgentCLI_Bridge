@@ -16,8 +16,9 @@ CHUNK = 50  # rows per upsert statement
 
 def index() -> int:
     """Upsert all local sessions (all agents) into the Miaoda sessions table.
-    Returns total count. display_name and hidden are NOT in COLS/SET, so user
-    renames and archives survive indexer upserts. Stale-row cleanup is per-agent."""
+    Returns total count. hidden is NOT in COLS/SET, so archives survive indexer
+    upserts. display_name is only cleared when the native CLI title changes to a
+    different value, allowing CLI-side renames to show up after a page rename."""
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     total = 0
     ids_by_agent: dict[str, list[str]] = {}
@@ -58,7 +59,12 @@ def index() -> int:
                 "agent=EXCLUDED.agent, cwd=EXCLUDED.cwd, summary=EXCLUDED.summary, "
                 "updated_at=EXCLUDED.updated_at, online=EXCLUDED.online, "
                 "pid=EXCLUDED.pid, indexed_at=EXCLUDED.indexed_at, "
-                "ctx_used=EXCLUDED.ctx_used, ctx_limit=EXCLUDED.ctx_limit"
+                "ctx_used=EXCLUDED.ctx_used, ctx_limit=EXCLUDED.ctx_limit, "
+                "display_name=CASE "
+                "WHEN sessions.display_name IS NOT NULL "
+                "AND EXCLUDED.summary IS DISTINCT FROM sessions.summary "
+                "AND EXCLUDED.summary IS DISTINCT FROM sessions.display_name "
+                "THEN NULL ELSE sessions.display_name END"
             )
             lark_db.execute(sql)
 

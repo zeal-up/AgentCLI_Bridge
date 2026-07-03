@@ -120,8 +120,21 @@ const Conversation: React.FC = () => {
 
   useEffect(() => {
     if (!sessionId) return;
+    let cancelled = false;
+    const refreshSession = () => {
+      getSession(sessionId)
+        .then((row) => {
+          if (!cancelled) setSession(row);
+        })
+        .catch(() => {});
+    };
     setSession(null);
-    getSession(sessionId).then(setSession).catch(() => {});
+    refreshSession();
+    const t = setInterval(refreshSession, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [sessionId]);
 
   useEffect(() => {

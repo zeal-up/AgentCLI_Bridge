@@ -30,7 +30,9 @@ log = logging.getLogger(__name__)
 CODEX_BIN = os.environ.get("COPILOT_BRIDGE_CODEX_BIN", "codex")
 CODEX_HOME = os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex"))
 SESSIONS_DIR = os.path.join(CODEX_HOME, "sessions")
+SESSION_INDEX = os.path.join(CODEX_HOME, "session_index.jsonl")
 RESUME_TIMEOUT = int(os.environ.get("COPILOT_BRIDGE_RESUME_TIMEOUT", "600"))
+CODEX_SUBMIT_KEY = os.environ.get("COPILOT_BRIDGE_CODEX_SUBMIT_KEY", "C-j")
 
 MAX_CONTENT_LEN = 4000
 TRUNCATE_HEAD = 3800
@@ -58,6 +60,88 @@ def _mtime_iso(mtime: float) -> str:
     return _dt.datetime.fromtimestamp(mtime, _dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _now_iso_ns() -> str:
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _read_session_index() -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    try:
+        with open(SESSION_INDEX, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                sid = row.get("id") or row.get("session_id")
+                if sid:
+                    rows[str(sid)] = row
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log.warning("failed to read codex session index %s: %s", SESSION_INDEX, exc)
+    return rows
+
+
+def _thread_name(row: dict[str, Any] | None) -> str | None:
+    if not row:
+        return None
+    name = row.get("thread_name") or row.get("name") or row.get("title")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+def _write_session_index_title(session_id: str, name: str) -> bool:
+    rows: list[dict[str, Any]] = []
+    found = False
+    try:
+        with open(SESSION_INDEX, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                sid = row.get("id") or row.get("session_id")
+                if sid == session_id:
+                    row["id"] = session_id
+                    row["thread_name"] = name
+                    row["updated_at"] = _now_iso_ns()
+                    found = True
+                rows.append(row)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        log.warning("failed to read codex session index for update: %s", exc)
+        return False
+
+    if not found:
+        rows.append({"id": session_id, "thread_name": name, "updated_at": _now_iso_ns()})
+
+    tmp = f"{SESSION_INDEX}.tmp"
+    try:
+        os.makedirs(os.path.dirname(SESSION_INDEX), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
+        os.replace(tmp, SESSION_INDEX)
+        return True
+    except OSError as exc:
+        log.error("codex set_title failed for %s: %s", session_id, exc)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return False
+
+
 class CodexAdapter(AgentAdapter):
     key = "codex"
     label = "Codex"
@@ -76,6 +160,7 @@ class CodexAdapter(AgentAdapter):
 
         out: dict[str, dict[str, Any]] = {}
         cwd_newest: dict[str, str] = {}
+        session_index = _read_session_index()
         files = glob.glob(os.path.join(SESSIONS_DIR, "*", "*", "*", "*.jsonl"))
         for fpath in files:
             try:
@@ -102,11 +187,17 @@ class CodexAdapter(AgentAdapter):
             if not sid:
                 continue
             cached = self._scan_cache.get(sid)
+            idx_title = _thread_name(session_index.get(sid))
             if (cached and cached.get("size") == st.st_size
                     and cached.get("mtime") == st.st_mtime):
-                out[sid] = cached
+                meta = dict(cached)
+                if idx_title:
+                    meta["title"] = idx_title
+                out[sid] = meta
             else:
                 meta = self._parse_meta(fpath, payload)
+                if idx_title:
+                    meta["title"] = idx_title
                 meta["path"] = fpath
                 meta["mtime"] = st.st_mtime
                 meta["size"] = st.st_size
@@ -327,7 +418,7 @@ class CodexAdapter(AgentAdapter):
         if pid:
             pane = live.tmux_pane_for_pid(pid)
             if pane:
-                if live.tmux_send_text(pane, content):
+                if live.tmux_send_text(pane, content, submit_key=CODEX_SUBMIT_KEY):
                     return f"sent to tmux pane {pane} (live codex pid {pid})"
                 log.warning("codex %s: tmux send failed, falling back to headless", session_id)
             else:
@@ -337,9 +428,10 @@ class CodexAdapter(AgentAdapter):
         return self.resume_offline(session_id, content, cwd)
 
     def set_title(self, session_id: str, name: str) -> bool:
-        # Codex thread names are not trivially writable from outside; page
-        # renames persist via sessions.display_name (indexer preserves it).
-        return False
+        ok = _write_session_index_title(session_id, name)
+        if ok:
+            self._scan(force=True)
+        return ok
 
     def get_context(self, session_id: str) -> dict[str, Any] | None:
         """used = latest token_count.info.last_token_usage.input_tokens (the

@@ -112,12 +112,12 @@ def tmux_pane_for_pid(pid: int) -> str | None:
     return None
 
 
-def tmux_send_text(pane: str, content: str) -> bool:
-    """Type `content` into a tmux pane and press Enter (submits in a TUI)."""
+def tmux_send_text(pane: str, content: str, submit_key: str = "Enter") -> bool:
+    """Type `content` into a tmux pane and send the TUI submit key."""
     try:
         subprocess.run(['tmux', 'send-keys', '-t', pane, '-l', content],
                         capture_output=True, text=True, timeout=10)
-        subprocess.run(['tmux', 'send-keys', '-t', pane, 'Enter'],
+        subprocess.run(['tmux', 'send-keys', '-t', pane, submit_key],
                         capture_output=True, text=True, timeout=10)
         return True
     except Exception:
