@@ -40,6 +40,10 @@ _SKIP_TYPES = frozenset({
 MAX_CONTENT_LEN = 4000
 TRUNCATE_HEAD = 3800
 ONLINE_RECENT_SEC = 60  # a session is "online" if its transcript was appended within this
+# Orphan-proc fallback only applies to sessions active within this window —
+# an old session in a long-deleted cwd is not the live renamed one, and
+# linking it would falsely mark it online.
+ORPHAN_RECENT_SEC = 300
 
 
 def _truncate(text: str) -> str:
@@ -245,14 +249,19 @@ class ClaudeAdapter(AgentAdapter):
         out: list[dict[str, Any]] = []
         for sid, m in scan.items():
             mtime = m.get("mtime", 0)
-            online = (now - mtime) < ONLINE_RECENT_SEC
+            # Real live-process check first (an idle or long-running turn won't
+            # append to the transcript within the 60s mtime window, so mtime
+            # alone would mark a live session dead). Falls back to mtime
+            # recency for sessions whose proc we can't pin down.
+            pid = self._find_live_pid(m)
+            online = bool(pid) or (now - mtime) < ONLINE_RECENT_SEC
             out.append({
                 "id": sid,
                 "cwd": m.get("cwd"),
                 "summary": m.get("title"),
                 "updated_at": _mtime_iso(mtime),
                 "online": online,
-                "pid": None,
+                "pid": pid,
             })
         return out
 
@@ -284,9 +293,13 @@ class ClaudeAdapter(AgentAdapter):
         pid = _find_live_claude_pid(path, cwd)
         if pid:
             return pid
-        # stale cwd (dir renamed/deleted) → orphan-proc fallback
+        # stale cwd (dir renamed/deleted) → orphan-proc fallback, but only for
+        # sessions active within ORPHAN_RECENT_SEC — an old session in a
+        # long-deleted cwd is not the live renamed one and must not inherit
+        # the orphan pid (it would be a false positive).
         if cwd and not os.path.exists(cwd):
-            return self._orphan_live_pid()
+            if time.time() - m.get("mtime", 0) < ORPHAN_RECENT_SEC:
+                return self._orphan_live_pid()
         return None
 
     def _orphan_live_pid(self) -> int | None:
