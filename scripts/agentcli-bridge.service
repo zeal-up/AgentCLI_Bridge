@@ -1,3 +1,15 @@
+# AgentCLI Bridge — systemd unit template.
+#
+# `install.sh` generates a fully-resolved unit at /etc/systemd/system/
+# automatically. Use this template only for manual setup:
+#   1. Replace __USER__, __ROOT__ with your values.
+#   2. sudo cp scripts/agentcli-bridge.service /etc/systemd/system/
+#   3. sudo systemctl daemon-reload && sudo systemctl enable --now agentcli-bridge
+#
+# Logs: ~/.copilot-bridge/logs/{index,tail,inject}.log
+# State: ~/.copilot-bridge/bridge-state.db  (offsets)
+# Stop/status: ./scripts/bridge-stop.sh | ./scripts/bridge-status.sh
+
 [Unit]
 Description=AgentCLI Bridge — mirror local agent CLI sessions to Feishu Miaoda app
 After=network-online.target
@@ -5,14 +17,13 @@ Wants=network-online.target
 
 [Service]
 Type=forking
-# Adjust User/WorkingDirectory to your environment.
-User=root
-WorkingDirectory=/workspace/linzy5@xiaopeng.com/Projects/agentcli_bridge
-# Path to python3 and lark-cli must be on PATH (lark-cli is in /usr/local/bin).
+User=__USER__
+WorkingDirectory=__ROOT__
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-ExecStart=/workspace/linzy5@xiaopeng.com/Projects/agentcli_bridge/scripts/bridge-start.sh
-ExecStop=/workspace/linzy5@xiaopeng.com/Projects/agentcli_bridge/scripts/bridge-stop.sh
-PIDFile=/root/.copilot-bridge/bridge.pids
+EnvironmentFile=__ROOT__/.env.local
+ExecStart=__ROOT__/scripts/bridge-start.sh
+ExecStop=__ROOT__/scripts/bridge-stop.sh
+PIDFile=%h/.copilot-bridge/bridge.pids
 Restart=on-failure
 RestartSec=5
 
