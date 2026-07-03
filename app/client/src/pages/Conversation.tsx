@@ -70,47 +70,66 @@ const Conversation: React.FC = () => {
   const oldestTsRef = useRef<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // ---- Voice input (Web Speech API) ----
-  // Progressive enhancement: only shown where the client supports it. iOS
-  // Feishu (WKWebView) typically doesn't — the button is hidden then.
+  // ---- Voice input (Web Speech API, press-and-hold) ----
+  // Press-and-hold the mic button: recognition starts on pointer-down and
+  // stays alive across pauses — browsers auto-end on silence, so onend
+  // restarts while the button is still held, giving continuous recognition
+  // with live interim text. Release to stop. iOS Feishu (WKWebView) usually
+  // lacks SpeechRecognition — the button is hidden then.
   const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
   const voiceSupported = !!SR;
   const [listening, setListening] = useState(false);
   const recRef = useRef<any>(null);
-  const baseInputRef = useRef<string>('');
+  const holdRef = useRef(false);
+  const finalTextRef = useRef('');
 
-  const stopListen = useCallback(() => {
-    try { recRef.current?.stop(); } catch { /* ignore */ }
-    setListening(false);
-  }, []);
-
-  const startListen = useCallback(() => {
+  const beginRecognition = useCallback(() => {
     if (!SR) return;
     const rec = new SR();
     rec.lang = 'zh-CN';
     rec.continuous = true;
     rec.interimResults = true;
-    baseInputRef.current = input;
-    let finalText = input;
     rec.onresult = (e: any) => {
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const seg = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += seg;
+        if (e.results[i].isFinal) finalTextRef.current += seg;
         else interim += seg;
       }
-      setInput((finalText + interim).slice(0, 8000));
+      setInput((finalTextRef.current + interim).slice(0, 8000));
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = (e: any) => {
-      setErr(`voice: ${e.error || 'error'}`);
+    rec.onend = () => {
+      // Browser ended (silence/timeout). If still held, restart so recognition
+      // stays continuous across pauses instead of dropping after one sentence.
+      if (holdRef.current) {
+        try { rec.start(); return; } catch { /* fall through */ }
+      }
       setListening(false);
+    };
+    rec.onerror = (e: any) => {
+      // no-speech/aborted/interrupted are benign (a pause with no words); don't
+      // surface them or they'd abort the whole hold on every brief silence.
+      if (e.error === 'no-speech' || e.error === 'aborted' || e.error === 'interrupted') return;
+      setErr(`voice: ${e.error || 'error'}`);
     };
     recRef.current = rec;
     try { rec.start(); setListening(true); } catch { setListening(false); }
-  }, [SR, input]);
+  }, [SR]);
 
-  useEffect(() => () => { try { recRef.current?.stop(); } catch { /* ignore */ } }, []);
+  const startListen = useCallback(() => {
+    if (!SR) return;
+    holdRef.current = true;
+    finalTextRef.current = input;
+    beginRecognition();
+  }, [SR, input, beginRecognition]);
+
+  const stopListen = useCallback(() => {
+    holdRef.current = false;
+    try { recRef.current?.stop(); } catch { /* ignore */ }
+    setListening(false);
+  }, []);
+
+  useEffect(() => () => { holdRef.current = false; try { recRef.current?.stop(); } catch { /* ignore */ } }, []);
 
   // Tick every 2s so time-based busy clearing re-evaluates even with no new events.
   useEffect(() => {
@@ -428,10 +447,15 @@ const Conversation: React.FC = () => {
             <Button
               variant="outline"
               size="icon"
-              onClick={listening ? stopListen : startListen}
+              onPointerDown={(e) => { e.preventDefault(); if (!busy) startListen(); }}
+              onPointerUp={stopListen}
+              onPointerLeave={stopListen}
+              onPointerCancel={stopListen}
               disabled={busy}
-              title={listening ? 'Stop voice input' : 'Voice input (Web Speech API)'}
-              className={listening ? 'animate-pulse border-red-500 text-red-500' : ''}
+              title={listening ? '松开结束语音输入' : '按住说话，实时识别（松开结束）'}
+              className={listening
+                ? 'select-none touch-none animate-pulse border-red-500 text-red-500'
+                : 'select-none touch-none'}
             >
               🎤
             </Button>
@@ -445,7 +469,7 @@ const Conversation: React.FC = () => {
                 onSend();
               }
             }}
-            placeholder={pendingPrompt ? 'Respond to the terminal… (Enter to send)' : busy ? 'Agent is working — wait for it to finish…' : listening ? 'Listening… speak now' : 'Send a command to this session… (Enter to send)'}
+            placeholder={pendingPrompt ? 'Respond to the terminal… (Enter to send)' : busy ? 'Agent is working — wait for it to finish…' : listening ? '正在聆听…松开结束（按住 🎤 说话）' : 'Send a command to this session… (Enter to send, or hold 🎤 to speak)'}
             className="max-h-32 min-h-[40px] resize-none"
             rows={2}
             disabled={busy || listening}
