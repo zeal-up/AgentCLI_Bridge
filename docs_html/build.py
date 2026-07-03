@@ -261,6 +261,10 @@ def build() -> None:
 </body>
 </html>
 """
+    # README image paths are rooted at the repository root. The generated
+    # docs_html/index.html lives one directory below, so adjust local image
+    # sources for offline browsing.
+    html_out = html_out.replace('src="docs/', 'src="../docs/')
     OUT.write_text(html_out, encoding="utf-8")
     print(f"wrote {OUT} ({OUT.stat().st_size//1024} KB)")
 

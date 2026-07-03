@@ -71,6 +71,19 @@
 
 ---
 
+## 截图
+
+> 以下为脱敏演示数据，展示桌面端和手机端的主要使用形态。
+
+![AgentCLI Bridge desktop conversation](docs/img_v3_02137_964e80cc-851e-45a8-a41c-f70f98e7174g.jpg)
+
+<p align="center">
+  <img src="docs/img_v3_02138_4e417fb9-816f-4c53-8b7b-ed315109d98g.webp" alt="AgentCLI Bridge mobile conversation" width="42%">
+  <img src="docs/img_v3_02138_c00436a0-0614-46e6-b968-da28496ff3cg.webp" alt="AgentCLI Bridge mobile sessions drawer" width="42%">
+</p>
+
+---
+
 ## 架构优势
 
 | 优势 | 说明 |
