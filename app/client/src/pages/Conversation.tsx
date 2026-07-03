@@ -79,9 +79,11 @@ const Conversation: React.FC = () => {
   const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
   const voiceSupported = !!SR;
   const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
   const recRef = useRef<any>(null);
   const holdRef = useRef(false);
   const finalTextRef = useRef('');
+  const holdBaseLenRef = useRef(0);
 
   const beginRecognition = useCallback(() => {
     if (!SR) return;
@@ -120,6 +122,7 @@ const Conversation: React.FC = () => {
     if (!SR) return;
     holdRef.current = true;
     finalTextRef.current = input;
+    holdBaseLenRef.current = input.length;
     beginRecognition();
   }, [SR, input, beginRecognition]);
 
@@ -128,6 +131,11 @@ const Conversation: React.FC = () => {
     try { recRef.current?.stop(); } catch { /* ignore */ }
     setListening(false);
   }, []);
+
+  const toggleVoiceMode = useCallback(() => {
+    if (listening) stopListen();
+    setVoiceMode((v) => !v);
+  }, [listening, stopListen]);
 
   useEffect(() => () => { holdRef.current = false; try { recRef.current?.stop(); } catch { /* ignore */ } }, []);
 
@@ -447,33 +455,55 @@ const Conversation: React.FC = () => {
             <Button
               variant="outline"
               size="icon"
+              onClick={toggleVoiceMode}
+              disabled={busy}
+              title={voiceMode ? '切回键盘输入' : '切换语音输入模式'}
+              className={voiceMode
+                ? 'select-none border-primary bg-primary/10 text-primary'
+                : 'select-none'}
+            >
+              🎤
+            </Button>
+          )}
+          {voiceMode && voiceSupported ? (
+            <button
+              type="button"
               onPointerDown={(e) => { e.preventDefault(); if (!busy) startListen(); }}
               onPointerUp={stopListen}
               onPointerLeave={stopListen}
               onPointerCancel={stopListen}
               disabled={busy}
-              title={listening ? '松开结束语音输入' : '按住说话，实时识别（松开结束）'}
-              className={listening
-                ? 'select-none touch-none animate-pulse border-red-500 text-red-500'
-                : 'select-none touch-none'}
-            >
-              🎤
-            </Button>
-          )}
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                onSend();
+              className={
+                'min-h-[72px] flex-1 resize-none rounded-md border-2 border-dashed px-4 py-3 text-center text-sm transition-colors select-none touch-none '
+                + (listening
+                  ? 'border-red-500 bg-red-50 text-red-900 animate-pulse dark:bg-red-950/30 dark:text-red-200'
+                  : 'border-input bg-muted/50 text-muted-foreground hover:bg-muted')
               }
-            }}
-            placeholder={pendingPrompt ? 'Respond to the terminal… (Enter to send)' : busy ? 'Agent is working — wait for it to finish…' : listening ? '正在聆听…松开结束（按住 🎤 说话）' : 'Send a command to this session… (Enter to send, or hold 🎤 to speak)'}
-            className="max-h-32 min-h-[40px] resize-none"
-            rows={2}
-            disabled={busy || listening}
-          />
+            >
+              {listening
+                ? (input.slice(holdBaseLenRef.current).trim()
+                    ? input.slice(holdBaseLenRef.current)
+                    : '正在聆听…')
+                : (input.trim()
+                    ? `📝 ${input.slice(-60)}  ·  按住继续说话`
+                    : '按住 说话')}
+            </button>
+          ) : (
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
+              placeholder={pendingPrompt ? 'Respond to the terminal… (Enter to send)' : busy ? 'Agent is working — wait for it to finish…' : 'Send a command to this session… (Enter to send, or tap 🎤 for voice)'}
+              className="max-h-32 min-h-[40px] resize-none"
+              rows={2}
+              disabled={busy}
+            />
+          )}
           <Button onClick={onSend} disabled={busy || listening || sending || !input.trim()}>
             {busy ? 'Working…' : 'Send'}
           </Button>
