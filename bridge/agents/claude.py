@@ -137,6 +137,15 @@ class ClaudeAdapter(AgentAdapter):
                     st = os.stat(fpath)
                 except OSError:
                     continue
+                # The same session id can appear in multiple project dirs when
+                # the cwd was renamed (the old transcript stays behind in the
+                # old encoded dir; the CLI appends to the new one). Keep the
+                # most-recently-modified transcript — that is the file the CLI
+                # is actively writing, so the tailer follows live turns and the
+                # title reflects the current title events.
+                prior = out.get(sid)
+                if prior and prior.get("mtime", 0) > st.st_mtime:
+                    continue
                 cached = self._scan_cache.get(sid)
                 if (cached and cached.get("size") == st.st_size
                         and cached.get("mtime") == st.st_mtime):
