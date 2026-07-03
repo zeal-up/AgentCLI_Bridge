@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AGENT_LABELS, archiveSession, listSessions, sessionTitle, type SessionRow } from '../api/bridge';
 import { cn } from '../lib/utils';
 
@@ -8,31 +8,34 @@ interface Props {
   onClose: () => void;
 }
 
-type Filter = 'all' | 'copilot' | 'claude' | 'codex';
+type Agent = 'copilot' | 'claude' | 'codex';
+const AGENTS: Agent[] = ['copilot', 'claude', 'codex'];
 
-const FILTERS: Filter[] = ['all', 'copilot', 'claude', 'codex'];
+const DOT: Record<Agent, string> = {
+  copilot: 'bg-sky-500',
+  claude: 'bg-orange-500',
+  codex: 'bg-emerald-500',
+};
+const BADGE: Record<Agent, string> = {
+  copilot: 'bg-sky-500/15 text-sky-700 dark:text-sky-400',
+  claude: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
+  codex: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+};
 
 const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
-  const [rows, setRows] = useState<SessionRow[]>([]);
+  const [allRows, setAllRows] = useState<SessionRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>('all');
+  // No "All" tab — the list is always scoped to one agent. Default to the
+  // agent the user is most likely actively using (claude here).
+  const [filter, setFilter] = useState<Agent>('claude');
   const [showArchived, setShowArchived] = useState(false);
 
+  // Always fetch the full set (all agents) so per-agent counts stay accurate
+  // when switching tabs without a refetch; the list is filtered client-side.
   const refresh = () => {
-    listSessions(filter === 'all' ? undefined : filter, showArchived)
-      .then((r) => {
-        // Online first, then most-recently-updated.
-        r.sort((a, b) => {
-          const ao = a.online ? 1 : 0;
-          const bo = b.online ? 1 : 0;
-          if (ao !== bo) return bo - ao;
-          const at = a.updatedAt ?? a.updated_at ?? '';
-          const bt = b.updatedAt ?? b.updated_at ?? '';
-          return bt.localeCompare(at);
-        });
-        setRows(r);
-      })
+    listSessions(undefined, showArchived)
+      .then((r) => setAllRows(r))
       .catch((e) => setErr(e?.response?.status ? `HTTP ${e.response.status}` : String(e?.message ?? e)))
       .finally(() => setLoading(false));
   };
@@ -42,7 +45,30 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
     refresh();
     const t = setInterval(refresh, 10000);
     return () => clearInterval(t);
-  }, [filter, showArchived]);
+  }, [showArchived]);
+
+  const counts = useMemo(() => {
+    const c: Record<Agent, number> = { copilot: 0, claude: 0, codex: 0 };
+    for (const r of allRows) {
+      const a = (r.agent || 'copilot') as Agent;
+      if (a in c) c[a]++;
+    }
+    return c;
+  }, [allRows]);
+
+  const rows = useMemo(() => {
+    return allRows
+      .filter((r) => (r.agent || 'copilot') === filter)
+      .sort((a, b) => {
+        // Online first, then most-recently-updated.
+        const ao = a.online ? 1 : 0;
+        const bo = b.online ? 1 : 0;
+        if (ao !== bo) return bo - ao;
+        const at = a.updatedAt ?? a.updated_at ?? '';
+        const bt = b.updatedAt ?? b.updated_at ?? '';
+        return bt.localeCompare(at);
+      });
+  }, [allRows, filter]);
 
   return (
     <div className="flex h-full flex-col">
@@ -50,29 +76,47 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
         <span>Sessions</span>
         <button onClick={onClose} className="rounded px-2 py-0.5 text-xs hover:bg-accent">✕</button>
       </div>
-      <div className="sticky top-[2.6rem] z-10 flex items-center gap-1 border-b border-border bg-background px-2 py-1">
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={cn(
-              'rounded-full px-2.5 py-0.5 text-[11px] font-medium',
-              filter === f ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent',
-            )}
-          >
-            {f === 'all' ? 'All' : AGENT_LABELS[f]}
-          </button>
-        ))}
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          {loading ? '…' : `${rows.length}`}
-        </span>
-      </div>
-      <div className="sticky top-[5rem] z-10 flex items-center border-b border-border bg-background px-2 py-0.5">
-        <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="h-3 w-3" />
+
+      {/* Agent picker — vertical, larger touch targets. No "All" tab. */}
+      <div className="flex flex-col gap-1 border-b border-border px-2 py-2">
+        {AGENTS.map((f) => {
+          const active = filter === f;
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={cn(
+                'relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
+                active
+                  ? 'bg-accent font-semibold text-accent-foreground'
+                  : 'font-medium text-foreground/80 hover:bg-accent/60',
+              )}
+            >
+              <span
+                className={cn(
+                  'absolute left-0 top-2 bottom-2 w-1 rounded-full',
+                  active ? DOT[f] : 'bg-transparent',
+                )}
+              />
+              <span className={cn('h-2.5 w-2.5 shrink-0 rounded-full', DOT[f])} />
+              <span>{AGENT_LABELS[f]}</span>
+              <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                {loading ? '…' : counts[f]}
+              </span>
+            </button>
+          );
+        })}
+        <label className="mt-1 flex items-center gap-1.5 px-3 py-1 text-[11px] text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            className="h-3 w-3"
+          />
           show archived
         </label>
       </div>
+
       {err && <div className="px-3 py-2 text-xs text-destructive">Error: {err}</div>}
       <div className="flex-1 overflow-y-auto">
         <ul className="py-1">
@@ -80,7 +124,7 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
             const active = r.id === selected;
             const label = sessionTitle(r, r.id);
             const ts = r.updatedAt ?? r.updated_at ?? '';
-            const agent = r.agent || 'copilot';
+            const agent = (r.agent || 'copilot') as Agent;
             const isHidden = !!r.hidden;
             return (
               <li key={`${agent}:${r.id}`}>
@@ -101,9 +145,7 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
                     {isHidden && <span className="shrink-0 text-[9px] text-muted-foreground">archived</span>}
                     <span className={cn(
                       'ml-auto shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase',
-                      agent === 'claude' ? 'bg-orange-500/15 text-orange-700 dark:text-orange-400'
-                        : agent === 'codex' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
-                        : 'bg-sky-500/15 text-sky-700 dark:text-sky-400',
+                      BADGE[agent],
                     )}>
                       {AGENT_LABELS[agent] || agent}
                     </span>
