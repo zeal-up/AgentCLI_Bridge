@@ -10,9 +10,13 @@ Safety:
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 import logging
 import os
+import re
 import sqlite3
+import subprocess
 import time
 from typing import Any
 
@@ -24,6 +28,9 @@ from .agents import get_adapter
 log = logging.getLogger(__name__)
 
 POLL_INTERVAL = 2  # seconds between poll loops
+PROMPT_CHECK_INTERVAL = 5  # seconds between prompt-capture sweeps
+PROMPT_RECENT_SEC = 90  # a command consumed within this window = "active turn"
+_PROMPT_LAST_CAPTURE_TS: float = 0.0
 
 _AUDIT_CREATE_SQL = """CREATE TABLE IF NOT EXISTS audit (
     id BIGINT,
@@ -174,6 +181,100 @@ def poll_loop() -> None:
         try:
             poll_once()
             poll_renames_once()
+            poll_prompts()
         except Exception as exc:
             log.error("poll_loop error: %s", exc, exc_info=True)
         time.sleep(POLL_INTERVAL)
+
+
+# ---------------------------------------------------------------------------
+# Prompt surfacing: when a live agent is blocked on an interactive prompt
+# (permission / picker) the prompt is only in the terminal, not the transcript.
+# Capture the tmux pane for active turns and surface a system event so the
+# page can show the options + unfreeze Send for the user to respond.
+# ---------------------------------------------------------------------------
+
+_PROMPT_RE = re.compile(
+    r"(?:"
+    r"[\?？]\s*\(?[yYnN]\s*/\s*[yYnN]\)?\s*$"   # ...? (y/N)
+    r"|[\?？]\s*$"                                # ends with `?`
+    r"|>\s*$"                                     # picker prompt `> `
+    r"|[:：]\s*$"                                 # `prompt:`
+    r"|\(\s*[0-9]+\s*\)\s*$"                     # `(1)` standalone numbered choice
+    r"|^\s*[\(\[]?[0-9]+[\)\].:]\s+\S"           # `1) foo` / `[1] foo` numbered option line
+    r"|(?:allow|approve|permission|允许|选择|选项|确认|是否|y/n|Y/n)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _capture_pane(pane: str, lines: int = 20) -> list[str]:
+    try:
+        out = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-t", pane, "-S", f"-{lines}"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+    except Exception:
+        return []
+    return [ln for ln in out.splitlines() if ln.strip()]
+
+
+def _looks_like_prompt(lines: list[str]) -> bool:
+    tail = [ln.strip() for ln in lines[-6:] if ln.strip()]
+    for ln in tail:
+        if _PROMPT_RE.search(ln):
+            return True
+    return False
+
+
+def poll_prompts() -> None:
+    """For sessions with a command consumed recently (active turn), if the live
+    terminal is showing an interactive prompt, surface its last lines as a
+    `system` event so the page can display it + unfreeze Send."""
+    global _PROMPT_LAST_CAPTURE_TS
+    now = time.time()
+    if now - _PROMPT_LAST_CAPTURE_TS < PROMPT_CHECK_INTERVAL:
+        return
+    _PROMPT_LAST_CAPTURE_TS = now
+
+    since = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # consumed_at > (now - PROMPT_RECENT_SEC): active turns
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(seconds=PROMPT_RECENT_SEC)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        rows = lark_db.query(
+            f"SELECT DISTINCT session_id, COALESCE(agent,'copilot') AS agent "
+            f"FROM commands WHERE consumed=TRUE AND consumed_at > {lark_db.sql_str(cutoff)}"
+        )
+    except Exception as exc:
+        log.warning("poll_prompts query failed: %s", exc)
+        return
+
+    for r in rows:
+        sid = r["session_id"]
+        adapter = get_adapter(r.get("agent") or "copilot")
+        try:
+            pane = adapter.live_pane(sid)
+        except Exception:
+            pane = None
+        if not pane:
+            continue
+        lines = _capture_pane(pane)
+        if not lines or not _looks_like_prompt(lines):
+            continue
+        body = "📋 terminal waiting for input:\n" + "\n".join(lines[-8:])
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Dedup per session per minute: same prompt within 60s won't re-write.
+        eid = int.from_bytes(
+            hashlib.blake2b(f"prompt\x1f{sid}\x1f{ts[:16]}".encode(), digest_size=8).digest(),
+            "big",
+        ) & ((1 << 53) - 1)
+        try:
+            lark_db.execute(
+                "INSERT INTO events (id, session_id, role, content, ts) VALUES "
+                f"({lark_db.sql_str(eid)}, {lark_db.sql_str(sid)}, 'system', "
+                f"{lark_db.sql_str(body)}, {lark_db.sql_str(ts)}) ON CONFLICT (id) DO NOTHING"
+            )
+        except Exception as exc:
+            log.warning("poll_prompts insert failed for %s: %s", sid, exc)
+

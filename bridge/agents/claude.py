@@ -314,6 +314,11 @@ class ClaudeAdapter(AgentAdapter):
         m = self._scan(force=True).get(session_id)
         return m.get("cwd") if m else None
 
+    def live_pane(self, session_id: str) -> str | None:
+        m = self._scan().get(session_id) or {}
+        pid = self._find_live_pid(m)
+        return live.tmux_pane_for_pid(pid) if pid else None
+
     # ---- tailing ----------------------------------------------------------
 
     def discover_tail_ids(self) -> list[str]:

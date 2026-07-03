@@ -326,9 +326,11 @@ class CopilotAdapter(AgentAdapter):
         cwd = self.get_cwd(session_id) or os.path.expanduser("~")
         return self.resume_offline(session_id, content, cwd)
 
+    def live_pane(self, session_id: str) -> str | None:
+        pid = _find_live_copilot_pid(session_id)
+        return live.tmux_pane_for_pid(pid) if pid else None
+
     def set_title(self, session_id: str, name: str) -> bool:
-        """Update the Copilot session-store.db summary (native name field).
-        Copilot may overwrite it on a later turn, but that's native behavior."""
         db = config.SESSION_STORE_DB
         if not os.path.exists(db):
             return False

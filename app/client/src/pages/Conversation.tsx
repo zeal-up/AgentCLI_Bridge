@@ -217,7 +217,12 @@ const Conversation: React.FC = () => {
     if (!text || !sessionId || sending) return;
     setSending(true);
     // Optimistic: show the user's message instantly, before the round-trip.
-    setPending((p) => [...p, { content: text, ts: new Date().toISOString() }]);
+    // BUT when responding to a surfaced terminal prompt, the text goes via
+    // tmux send-keys and is NOT echoed back as a user.message event, so skip
+    // the optimistic bubble (it would never clear and keep Send frozen).
+    if (!pendingPrompt) {
+      setPending((p) => [...p, { content: text, ts: new Date().toISOString() }]);
+    }
     try {
       await sendCommand(sessionId, text, session?.agent);
       setInput('');
@@ -231,18 +236,28 @@ const Conversation: React.FC = () => {
     }
   };
 
-  if (!sessionId) return <div className="p-4 text-sm">No session.</div>;
-
-  const title = sessionTitle(session, sessionId);
-  const agent = session?.agent || 'copilot';
-  const ctxLabel = formatContext(session);
-  const turns = groupTurns(events);
-
   // Agent-busy lock: freeze Send while the backend agent is working on a turn.
   // Busy iff (a) a message was just sent and not yet echoed, or (b) the last
   // user message has no final answer yet AND there was recent activity
   // (otherwise a stalled turn frees up after 90s).
+  // A recent "📋 terminal waiting for input" system event means the live agent
+  // is blocked on an interactive prompt (permission/picker). Surface it and
+  // UNFREEZE Send so the user can type the response (it goes via tmux send-keys).
+  // Only active when the prompt is the MOST RECENT event — once the agent
+  // resumes and emits any newer output, the prompt is considered resolved.
+  const pendingPrompt = useMemo(() => {
+    const last = events[events.length - 1];
+    if (!last) return null;
+    if (last.role !== 'system' || !last.content || !last.content.startsWith('📋 terminal')) {
+      return null;
+    }
+    const ageMs = last.ts ? Date.now() - new Date(last.ts).getTime() : Infinity;
+    if (ageMs < 60000) return last;
+    return null;
+  }, [events, nowTick]);
+
   const busy = useMemo(() => {
+    if (pendingPrompt) return false; // agent is waiting for input -> let the user respond
     if (pending.length > 0) return true;
     let lastUser = -1;
     for (let i = events.length - 1; i >= 0; i--) {
@@ -260,8 +275,14 @@ const Conversation: React.FC = () => {
       if (ageMs > 90000) return false; // no activity for 90s -> assume done/stalled
     }
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, pending, nowTick]);
+  }, [events, pending, pendingPrompt, nowTick]);
+
+  if (!sessionId) return <div className="p-4 text-sm">No session.</div>;
+
+  const title = sessionTitle(session, sessionId);
+  const agent = session?.agent || 'copilot';
+  const ctxLabel = formatContext(session);
+  const turns = groupTurns(events);
 
   const startRename = () => {
     setNameDraft(title);
@@ -363,6 +384,15 @@ const Conversation: React.FC = () => {
       </div>
 
       <div className="shrink-0 border-t border-border p-3">
+        {pendingPrompt && (
+          <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-amber-400 bg-amber-50 p-2 text-[12px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="mb-1 font-semibold">📋 Terminal is waiting for your input</div>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-100/60 p-1 font-mono text-[11px] dark:bg-amber-900/30">{(pendingPrompt.content || '').replace(/^📋 terminal waiting for input:\n?/, '')}</pre>
+            <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+              Type your response (e.g. <code>y</code> / <code>1</code>) and press Send — it goes straight to the live terminal.
+            </div>
+          </div>
+        )}
         <div className="mx-auto flex max-w-3xl items-end gap-2">
           {voiceSupported && (
             <Button
@@ -385,7 +415,7 @@ const Conversation: React.FC = () => {
                 onSend();
               }
             }}
-            placeholder={busy ? 'Agent is working — wait for it to finish…' : listening ? 'Listening… speak now' : 'Send a command to this session… (Enter to send)'}
+            placeholder={pendingPrompt ? 'Respond to the terminal… (Enter to send)' : busy ? 'Agent is working — wait for it to finish…' : listening ? 'Listening… speak now' : 'Send a command to this session… (Enter to send)'}
             className="max-h-32 min-h-[40px] resize-none"
             rows={2}
             disabled={busy || listening}
@@ -394,7 +424,7 @@ const Conversation: React.FC = () => {
             {busy ? 'Working…' : 'Send'}
           </Button>
         </div>
-        {busy && (
+        {busy && !pendingPrompt && (
           <div className="mx-auto mt-1 max-w-3xl text-[11px] text-muted-foreground">
             <span className="inline-block animate-pulse">⏳</span> Agent is working on this session. Send is frozen until it finishes.
           </div>

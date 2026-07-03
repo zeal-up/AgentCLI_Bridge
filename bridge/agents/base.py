@@ -114,3 +114,8 @@ class AgentAdapter:
         """Return {used, limit, model} for the session's current context usage,
         or None if unavailable. `used`/`limit` are token counts."""
         return None
+
+    def live_pane(self, session_id: str) -> str | None:
+        """The tmux pane id of the live interactive process running this session,
+        or None (for terminal-capture / prompt-surfacing)."""
+        return None
