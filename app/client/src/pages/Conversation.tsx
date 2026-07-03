@@ -130,10 +130,15 @@ const Conversation: React.FC = () => {
     holdRef.current = false;
     try { recRef.current?.stop(); } catch { /* ignore */ }
     setListening(false);
+    // Release always returns to keyboard mode so the recognized text is
+    // visible and editable in the input box.
+    setVoiceMode(false);
   }, []);
 
   const toggleVoiceMode = useCallback(() => {
-    if (listening) stopListen();
+    // If a recognition is in progress, tapping 🎤 just stops it (and returns
+    // to keyboard via stopListen). Otherwise toggle the mode.
+    if (listening) { stopListen(); return; }
     setVoiceMode((v) => !v);
   }, [listening, stopListen]);
 
@@ -480,11 +485,27 @@ const Conversation: React.FC = () => {
                   : 'border-input bg-muted/50 text-muted-foreground hover:bg-muted')
               }
             >
-              {listening
-                ? (input.slice(holdBaseLenRef.current).trim()
-                    ? input.slice(holdBaseLenRef.current)
-                    : '正在聆听…')
-                : (input.trim()
+              {listening ? (
+                <div className="flex flex-col items-center gap-1.5 py-1">
+                  <span className="text-base font-medium leading-snug text-red-900 dark:text-red-200">
+                    {input.slice(holdBaseLenRef.current).trim() || '正在聆听…'}
+                  </span>
+                  <span className="flex items-center gap-2 text-[11px] text-red-500/80">
+                    <span className="flex items-end gap-0.5 h-3">
+                      {[
+                        { h: 'h-1', d: '0ms' },
+                        { h: 'h-2.5', d: '120ms' },
+                        { h: 'h-3', d: '240ms' },
+                        { h: 'h-2', d: '360ms' },
+                        { h: 'h-1.5', d: '480ms' },
+                      ].map((b, i) => (
+                        <span key={i} className={`w-1 ${b.h} rounded-full bg-red-500 animate-pulse`} style={{ animationDelay: b.d }} />
+                      ))}
+                    </span>
+                    松开结束
+                  </span>
+                </div>
+              ) : (input.trim()
                     ? `📝 ${input.slice(-60)}  ·  按住继续说话`
                     : '按住 说话')}
             </button>
