@@ -411,6 +411,15 @@ class ClaudeAdapter(AgentAdapter):
         uid = event.get("uuid") or f"ts:{event.get('timestamp', '')}"
         return f"claude\x1f{session_id}\x1f{uid}"
 
+    def is_turn_complete(self, event: dict[str, Any]) -> bool:
+        # An assistant event whose message.stop_reason is end_turn (or
+        # stop_sequence) marks the turn boundary — the agent yielded to the
+        # user. tool_use means the turn continues (a tool is about to run).
+        if event.get("type") != "assistant":
+            return False
+        msg = event.get("message") or {}
+        return msg.get("stop_reason") in ("end_turn", "stop_sequence")
+
     # ---- injection --------------------------------------------------------
 
     def resume_offline(self, session_id: str, content: str, cwd: str) -> str:

@@ -261,6 +261,11 @@ class CopilotAdapter(AgentAdapter):
         key_id = event.get("id") or f"ts:{event.get('timestamp', '')}"
         return f"{session_id}\x1f{key_id}"
 
+    def is_turn_complete(self, event: dict[str, Any]) -> bool:
+        # Copilot emits a paired assistant.turn_start / assistant.turn_end for
+        # every turn; turn_end is the precise "agent idle, awaiting input".
+        return event.get("type") == "assistant.turn_end"
+
     # ---- injection --------------------------------------------------------
 
     def resume_offline(self, session_id: str, content: str, cwd: str) -> str:

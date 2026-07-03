@@ -30,6 +30,8 @@ function groupTurns(events: EventRow[]): Turn[] {
   const turns: Turn[] = [];
   let cur: Turn | null = null;
   for (const e of events) {
+    // '✓ turn complete' is a lock signal, not conversation content; hide it.
+    if (e.role === 'system' && e.content === '✓ turn complete') continue;
     if (e.role === 'user') {
       if (cur) turns.push(cur);
       cur = { user: e, process: [], answer: undefined };
@@ -256,24 +258,34 @@ const Conversation: React.FC = () => {
     return null;
   }, [events, nowTick]);
 
+  // Send-lock: is the agent still working on the turn after the last user msg?
+  // Release on a REAL completion signal (the tailer writes a '✓ turn complete'
+  // system marker when it sees end_turn / turn_end / task_complete), so we
+  // don't unlock on intermediate "let me check…" text that's followed by a
+  // tool call. Codex has no per-turn end marker, so for it we also release
+  // when the last event is an assistant reply and the stream has been silent
+  // for a few seconds (settled). 90s of total silence is the crash fallback.
   const busy = useMemo(() => {
-    if (pendingPrompt) return false; // agent is waiting for input -> let the user respond
+    if (pendingPrompt) return false; // agent is waiting on a terminal prompt -> respond
     if (pending.length > 0) return true;
     let lastUser = -1;
     for (let i = events.length - 1; i >= 0; i--) {
       if (events[i].role === 'user') { lastUser = i; break; }
     }
     if (lastUser === -1) return false;
-    for (let i = lastUser + 1; i < events.length; i++) {
-      if (events[i].role === 'assistant' && events[i].content && !events[i].content.startsWith('🔧')) {
-        return false; // a final answer landed -> turn done
-      }
+    const after = events.slice(lastUser + 1);
+    // Explicit turn-complete marker after the last user msg -> reliably done.
+    if (after.some((e) => e.role === 'system' && e.content === '✓ turn complete')) {
+      return false;
     }
-    const lastTs = events[events.length - 1]?.ts;
-    if (lastTs) {
-      const ageMs = Date.now() - new Date(lastTs).getTime();
-      if (ageMs > 90000) return false; // no activity for 90s -> assume done/stalled
-    }
+    const last = events[events.length - 1];
+    const idleMs = last?.ts ? Date.now() - new Date(last.ts).getTime() : Infinity;
+    // Codex fallback: no completion marker, but the last event is an assistant
+    // reply (not a tool call) and the stream has settled -> done with this turn.
+    const lastIsReply = !!last && last.role === 'assistant' && !!last.content
+      && !last.content.startsWith('🔧');
+    if (lastIsReply && idleMs > 4000) return false;
+    if (idleMs > 90000) return false; // no activity for 90s -> assume done/stalled
     return true;
   }, [events, pending, pendingPrompt, nowTick]);
 

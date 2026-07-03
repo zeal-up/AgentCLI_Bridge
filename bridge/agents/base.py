@@ -88,6 +88,14 @@ class AgentAdapter:
         re-runs (use the event's own id/uuid, not a byte offset)."""
         raise NotImplementedError
 
+    def is_turn_complete(self, event: dict[str, Any]) -> bool:
+        """True iff this event marks the end of an agent turn (the agent has
+        finished responding and is idle, waiting for the next user input).
+        The tailer emits a '✓ turn complete' marker on a True return so the
+        page's send-lock can release precisely instead of guessing from
+        transcript content. Default False (no reliable signal)."""
+        return False
+
     # ---- injection --------------------------------------------------------
 
     def resume_offline(self, session_id: str, content: str, cwd: str) -> str:

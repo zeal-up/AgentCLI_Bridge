@@ -127,8 +127,6 @@ def tail_session(session_id: str, once: bool = False, adapter: AgentAdapter | No
                         continue
 
                     rows = adapter.map_event(event, ctx)
-                    if not rows:
-                        continue
                     ts = adapter.event_ts(event)
                     base_key = adapter.stable_key(session_id, event)
                     for i, (role, content) in enumerate(rows):
@@ -139,6 +137,18 @@ def tail_session(session_id: str, once: bool = False, adapter: AgentAdapter | No
                         key = base_key if i == 0 else f"{base_key}\x1f#{i}"
                         eid = _gen_id(key)
                         pending_rows.append((eid, session_id, role, content, ts))
+
+                    # Turn-complete marker: emit a synthetic system row so the
+                    # page's send-lock can release on a real signal instead of
+                    # guessing from transcript content. Checked even when
+                    # map_event returned no rows (e.g. Copilot's turn_end is a
+                    # skip-type for display but still a completion signal).
+                    if adapter.is_turn_complete(event):
+                        mkey = f"{base_key}\x1fdone"
+                        pending_rows.append(
+                            (_gen_id(mkey), session_id, "system",
+                             "✓ turn complete", ts)
+                        )
 
                     if len(pending_rows) >= _FLUSH_ROW_THRESHOLD:
                         _do_flush()

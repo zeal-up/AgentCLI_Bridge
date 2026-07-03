@@ -286,6 +286,17 @@ class CodexAdapter(AgentAdapter):
         ).hexdigest()
         return f"codex\x1f{session_id}\x1f{event.get('timestamp', '')}\x1f{p.get('type', '')}\x1f{p.get('role', '')}\x1f{phash}"
 
+    def is_turn_complete(self, event: dict[str, Any]) -> bool:
+        # Codex has NO per-turn end event (turn_context only marks a turn
+        # *start*). The only explicit "agent done" signals are task_complete
+        # (agent declared the whole task finished) and turn_aborted. Mid-
+        # conversation turns have no marker, so the page falls back to its
+        # idle-settled heuristic for those.
+        if event.get("type") != "event_msg":
+            return False
+        p = event.get("payload") or {}
+        return p.get("type") in ("task_complete", "turn_aborted")
+
     # ---- injection --------------------------------------------------------
 
     def resume_offline(self, session_id: str, content: str, cwd: str) -> str:
