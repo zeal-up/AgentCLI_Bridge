@@ -47,6 +47,9 @@ logs/
 pids/
 *.pid
 
+# --- Local-only working notes / promotion drafts ---
+.local/
+
 # --- Editor / OS ---
 .vscode/
 .idea/
