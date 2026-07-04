@@ -98,6 +98,33 @@ def _last_titles(fpath: str) -> tuple[str | None, str | None]:
     return (custom, ai)
 
 
+def _last_cwd(fpath: str) -> str | None:
+    """The last `cwd` value written to the transcript. A session resumed after
+    a cwd rename has old cwd values in its earlier events and the current cwd
+    in the later ones, so the head's cwd is stale — only the last one is the
+    live cwd the CLI is actually running in now."""
+    import subprocess
+    last: str | None = None
+    try:
+        out = subprocess.run(
+            ["grep", "-a", '"cwd"', fpath],
+            capture_output=True, text=True, timeout=10,
+        ).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("cwd"):
+            last = ev["cwd"]
+    return last
+
+
 class ClaudeAdapter(AgentAdapter):
     key = "claude"
     label = "Claude"
@@ -163,10 +190,10 @@ class ClaudeAdapter(AgentAdapter):
         return out
 
     def _parse_meta(self, fpath: str, proj_enc: str) -> dict[str, Any]:
-        """Extract cwd + title. cwd from the head; title prefers the user's
+        """Extract cwd + title. cwd is the LAST one written (a renamed-cwd
+        session has stale cwds in its head); title prefers the user's
         custom-title (manual rename), then ai-title, then first real user msg.
         Titles can appear anywhere in the file, so we grep for the last of each."""
-        cwd: str | None = None
         first_user: str | None = None
         try:
             with open(fpath, "r", encoding="utf-8", errors="replace") as fh:
@@ -181,8 +208,6 @@ class ClaudeAdapter(AgentAdapter):
                         ev = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if not cwd and ev.get("cwd"):
-                        cwd = ev["cwd"]
                     if (first_user is None and ev.get("type") == "user"
                             and isinstance(ev.get("message"), dict)):
                         c = ev["message"].get("content")
@@ -195,8 +220,7 @@ class ClaudeAdapter(AgentAdapter):
         custom_title, ai_title = _last_titles(fpath)
         title = custom_title or ai_title or (first_user or "")[:80] or None
 
-        if not cwd:
-            cwd = _decode_cwd_from_dirname(proj_enc)
+        cwd = _last_cwd(fpath) or _decode_cwd_from_dirname(proj_enc)
         return {"cwd": cwd, "title": title}
 
     # ---- injection / rename ------------------------------------------------
