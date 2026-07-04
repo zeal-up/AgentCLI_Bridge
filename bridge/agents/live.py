@@ -112,11 +112,36 @@ def tmux_pane_for_pid(pid: int) -> str | None:
     return None
 
 
-def tmux_send_text(pane: str, content: str, submit_key: str = "Enter") -> bool:
-    """Type `content` into a tmux pane and send the TUI submit key."""
+def tmux_send_text(
+    pane: str,
+    content: str,
+    submit_key: str = "Enter",
+    newline_key: str | None = None,
+) -> bool:
+    """Type `content` into a tmux pane and send the TUI submit key.
+
+    When `newline_key` is given (e.g. codex's ``C-j``), multi-line content is
+    sent line-by-line with that key inserted between lines. This matters for
+    TUIs like codex where crossterm turns a raw LF byte (from ``send-keys -l``)
+    into an Enter key event — which would *submit* the draft prematurely.
+    Sending the TUI's own insert-newline key between lines avoids that. When
+    `newline_key` is None, content is sent verbatim with ``-l`` (legacy
+    behavior for copilot/claude)."""
     try:
-        subprocess.run(['tmux', 'send-keys', '-t', pane, '-l', content],
-                        capture_output=True, text=True, timeout=10)
+        if newline_key:
+            # Drop trailing newlines so we don't fire an extra submit/blank line.
+            body = content.rstrip("\r\n")
+            lines = body.split("\n")
+            for i, line in enumerate(lines):
+                if i > 0:
+                    subprocess.run(['tmux', 'send-keys', '-t', pane, newline_key],
+                                    capture_output=True, text=True, timeout=10)
+                if line:
+                    subprocess.run(['tmux', 'send-keys', '-t', pane, '-l', line],
+                                    capture_output=True, text=True, timeout=10)
+        else:
+            subprocess.run(['tmux', 'send-keys', '-t', pane, '-l', content],
+                            capture_output=True, text=True, timeout=10)
         subprocess.run(['tmux', 'send-keys', '-t', pane, submit_key],
                         capture_output=True, text=True, timeout=10)
         return True

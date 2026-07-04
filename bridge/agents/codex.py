@@ -32,7 +32,13 @@ CODEX_HOME = os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex"))
 SESSIONS_DIR = os.path.join(CODEX_HOME, "sessions")
 SESSION_INDEX = os.path.join(CODEX_HOME, "session_index.jsonl")
 RESUME_TIMEOUT = int(os.environ.get("COPILOT_BRIDGE_RESUME_TIMEOUT", "600"))
-CODEX_SUBMIT_KEY = os.environ.get("COPILOT_BRIDGE_CODEX_SUBMIT_KEY", "C-j")
+# Codex's default keymap (codex-rs/tui/src/keymap.rs): composer.submit is bound
+# to plain Enter, and editor.insert_newline is bound to Ctrl+J (among others).
+# So `Enter` submits the draft and `C-j` inserts a newline — the opposite of
+# what a terminal convention might suggest. Sending C-j as the "submit" key
+# just inserts a newline and the message never sends.
+CODEX_SUBMIT_KEY = os.environ.get("COPILOT_BRIDGE_CODEX_SUBMIT_KEY", "Enter")
+CODEX_NEWLINE_KEY = os.environ.get("COPILOT_BRIDGE_CODEX_NEWLINE_KEY", "C-j")
 
 MAX_CONTENT_LEN = 4000
 TRUNCATE_HEAD = 3800
@@ -418,7 +424,9 @@ class CodexAdapter(AgentAdapter):
         if pid:
             pane = live.tmux_pane_for_pid(pid)
             if pane:
-                if live.tmux_send_text(pane, content, submit_key=CODEX_SUBMIT_KEY):
+                if live.tmux_send_text(pane, content,
+                                       submit_key=CODEX_SUBMIT_KEY,
+                                       newline_key=CODEX_NEWLINE_KEY):
                     return f"sent to tmux pane {pane} (live codex pid {pid})"
                 log.warning("codex %s: tmux send failed, falling back to headless", session_id)
             else:
