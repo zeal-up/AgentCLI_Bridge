@@ -117,6 +117,7 @@ def tmux_send_text(
     content: str,
     submit_key: str = "Enter",
     newline_key: str | None = None,
+    verify: bool = False,
 ) -> bool:
     """Type `content` into a tmux pane and send the TUI submit key.
 
@@ -126,7 +127,18 @@ def tmux_send_text(
     into an Enter key event — which would *submit* the draft prematurely.
     Sending the TUI's own insert-newline key between lines avoids that. When
     `newline_key` is None, content is sent verbatim with ``-l`` (legacy
-    behavior for copilot/claude)."""
+    behavior for copilot/claude).
+
+    A settle pause is inserted before the submit key: TUI composers (notably
+    codex's) need a beat to commit just-typed characters before they'll honor
+    the submit key. Sending Enter immediately after ``send-keys -l`` arrives
+    while the input is still composing, so the Enter is swallowed/inserted as
+    a newline instead of submitting — the message sits in the composer unsent.
+
+    When `verify` is True (codex), confirm submission succeeded by reading the
+    pane back: codex shows ``Working (… • esc to interrupt)`` once the draft is
+    submitted, and the draft text stays on the ``›`` composer line if it
+    wasn't. Retry the submit key a few times if it didn't take."""
     try:
         if newline_key:
             # Drop trailing newlines so we don't fire an extra submit/blank line.
@@ -142,6 +154,39 @@ def tmux_send_text(
         else:
             subprocess.run(['tmux', 'send-keys', '-t', pane, '-l', content],
                             capture_output=True, text=True, timeout=10)
+            body = content
+        first_line = (body.split("\n")[0] or "").strip()
+
+        def _submitted() -> bool:
+            """True if the pane shows codex's working indicator (submit took)."""
+            try:
+                shot = subprocess.run(
+                    ['tmux', 'capture-pane', '-t', pane, '-p', '-S', '-10'],
+                    capture_output=True, text=True, timeout=10,
+                ).stdout
+            except Exception:
+                return True  # can't read pane — assume success, don't retry blindly
+            if 'esc to interrupt' in shot or 'Working' in shot:
+                return True
+            # Draft still sitting on the `›` composer line => not submitted.
+            for ln in shot.splitlines():
+                s = ln.strip()
+                if s.startswith('›') and first_line and first_line in s:
+                    return False
+            # Composer cleared but no explicit working signal — assume submitted
+            # (e.g. trivial prompt that finished before we could read the pane).
+            return True
+
+        if verify:
+            for _ in range(4):
+                time.sleep(0.35)
+                subprocess.run(['tmux', 'send-keys', '-t', pane, submit_key],
+                                capture_output=True, text=True, timeout=10)
+                time.sleep(0.6)
+                if _submitted():
+                    return True
+            return True  # keys were sent; gave up verifying
+        time.sleep(0.35)
         subprocess.run(['tmux', 'send-keys', '-t', pane, submit_key],
                         capture_output=True, text=True, timeout=10)
         return True

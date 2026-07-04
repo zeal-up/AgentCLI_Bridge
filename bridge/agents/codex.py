@@ -426,7 +426,8 @@ class CodexAdapter(AgentAdapter):
             if pane:
                 if live.tmux_send_text(pane, content,
                                        submit_key=CODEX_SUBMIT_KEY,
-                                       newline_key=CODEX_NEWLINE_KEY):
+                                       newline_key=CODEX_NEWLINE_KEY,
+                                       verify=True):
                     return f"sent to tmux pane {pane} (live codex pid {pid})"
                 log.warning("codex %s: tmux send failed, falling back to headless", session_id)
             else:
