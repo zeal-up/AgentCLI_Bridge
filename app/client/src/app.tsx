@@ -35,8 +35,11 @@ const Shell: React.FC = () => {
         <span className="break-all font-mono text-xs text-muted-foreground">
           {currentSessionId ?? APP_NAME}
         </span>
-        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground/60" title="build version (compare across clients to detect stale cache)">
-          {versionLabel()}
+        <span className="ml-auto flex shrink-0 items-center gap-2 font-mono text-[10px] text-muted-foreground/60">
+          <Link to="/voice-probe" className="rounded px-1.5 py-0.5 text-primary underline hover:bg-accent" title="Voice-input capability probe">🎤probe</Link>
+          <span title="build version (compare across clients to detect stale cache)">
+            {versionLabel()}
+          </span>
         </span>
       </header>
 
