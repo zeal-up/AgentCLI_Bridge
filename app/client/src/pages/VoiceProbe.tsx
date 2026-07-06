@@ -66,13 +66,16 @@ const VoiceProbe: React.FC = () => {
   const [captureLog, setCaptureLog] = useState<string[]>([]);
   const [raw, setRaw] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [probeErr, setProbeErr] = useState<string>('');
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const stopRef = useRef(false);
+  const safetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => () => {
     stopRef.current = true;
+    if (safetyRef.current) { clearTimeout(safetyRef.current); safetyRef.current = null; }
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
     try { ctxRef.current?.close(); } catch { /* ignore */ }
   }, []);
@@ -132,61 +135,70 @@ const VoiceProbe: React.FC = () => {
   const runProbe = async () => {
     if (running) return;
     setRunning(true);
+    setProbeErr('');
     setChecks(initChecks.map((c) => ({ ...c, status: 'pending' })));
     setVolume(0); setChunkCount(0); setSampleRate(null); setCaptureLog([]); setRaw('');
     stopRef.current = false;
 
-    runStaticChecks();
-    await testWorker();
-
-    // --- mic + ScriptProcessorNode (the make-or-break test) ---
-    set('mic', 'running', 'requesting getUserMedia…');
-    // Some WebViews (Feishu Android) silently ignore getUserMedia — the promise
-    // neither resolves nor rejects, no permission dialog appears. Race it with a
-    // timeout so the probe can't hang forever and we get a definitive verdict.
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      set('mic', 'fail', 'navigator.mediaDevices.getUserMedia 不存在 (WebView 不支持 WebRTC)');
-      set('scriptProc', 'fail', 'no mic stream');
+    // Overall safety net: no matter which step hangs in the WebView, the button
+    // never stays "运行中" forever. Cleared by finish().
+    safetyRef.current = setTimeout(() => {
+      setProbeErr('整体超时 25s：某一步 (worker / permissions.query / getUserMedia) 在 WebView 里挂住不返回。请截图此页发我。');
+      setChecks((cs) => cs.map((c) => (c.key === 'mic' && c.status !== 'ok') ? { ...c, status: 'fail', detail: 'safety timeout — probe hung at this step' } : c));
       finish();
-      return;
-    }
-    // Best-effort permission-state probe (may be unsupported in WebView).
-    try {
-      const perm: any = await (navigator as any).permissions?.query?.({ name: 'microphone' as any });
-      if (perm) set('mic', 'running', `permissions.query → state=${perm.state} (prompt=可弹窗, denied=硬拒, granted=已授)`);
-    } catch { /* permissions API unsupported — ignore */ }
-    let stream: MediaStream;
-    try {
-      stream = await new Promise<MediaStream>((resolve, reject) => {
-        let done = false;
-        const t = setTimeout(() => {
-          if (done) return; done = true;
-          reject(new Error('TIMEOUT: getUserMedia 6s 无响应 (WebView 静默忽略 — 权限被拦，无弹窗)'));
-        }, 6000);
-        navigator.mediaDevices!.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-        }).then((s) => { if (done) { try { s.getTracks().forEach((tr) => tr.stop()); } catch { /* ignore */ } return; } done = true; clearTimeout(t); resolve(s); })
-          .catch((e) => { if (done) return; done = true; clearTimeout(t); reject(e); });
-      });
-      streamRef.current = stream;
-      set('mic', 'ok', `got stream: ${stream.getAudioTracks().length} track(s)`);
-    } catch (e: any) {
-      set('mic', 'fail', `${e?.name || 'Error'}: ${e?.message || ''}`);
-      set('scriptProc', 'fail', 'no mic stream');
-      finish();
-      return;
-    }
+    }, 25000);
 
-    set('scriptProc', 'running');
-    let ctx: AudioContext;
     try {
+      runStaticChecks();
+      await testWorker();
+
+      // --- mic + ScriptProcessorNode (the make-or-break test) ---
+      set('mic', 'running', 'requesting getUserMedia…');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        set('mic', 'fail', 'navigator.mediaDevices.getUserMedia 不存在 (WebView 不支持 WebRTC)');
+        set('scriptProc', 'fail', 'no mic stream');
+        finish();
+        return;
+      }
+      // Best-effort permission-state probe (may be unsupported OR may hang in
+      // WebView — race it with a 3s timeout so it can't block the probe).
+      try {
+        const perm: any = await Promise.race([
+          Promise.resolve((navigator as any).permissions?.query?.({ name: 'microphone' as any })),
+          new Promise((_r, rej) => setTimeout(() => rej(new Error('perm-query 3s timeout')), 3000)),
+        ]);
+        if (perm) set('mic', 'running', `permissions.query → state=${perm.state} (prompt=可弹窗, denied=硬拒, granted=已授)`);
+      } catch (e: any) { set('mic', 'running', `permissions.query 不可用/超时: ${e?.message || e}`); }
+      let stream: MediaStream;
+      try {
+        stream = await new Promise<MediaStream>((resolve, reject) => {
+          let done = false;
+          const t = setTimeout(() => {
+            if (done) return; done = true;
+            reject(new Error('TIMEOUT: getUserMedia 6s 无响应 (WebView 静默忽略 — 权限被拦，无弹窗)'));
+          }, 6000);
+          navigator.mediaDevices!.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+          }).then((s) => { if (done) { try { s.getTracks().forEach((tr) => tr.stop()); } catch { /* ignore */ } return; } done = true; clearTimeout(t); resolve(s); })
+            .catch((e) => { if (done) return; done = true; clearTimeout(t); reject(e); });
+        });
+        streamRef.current = stream;
+        set('mic', 'ok', `got stream: ${stream.getAudioTracks().length} track(s)`);
+      } catch (e: any) {
+        set('mic', 'fail', `${e?.name || 'Error'}: ${e?.message || ''}`);
+        set('scriptProc', 'fail', 'no mic stream');
+        finish();
+        return;
+      }
+
+      set('scriptProc', 'running');
+      let ctx: AudioContext;
       const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
       ctx = new Ctor();
       ctxRef.current = ctx;
       if (ctx.state === 'suspended') { try { await ctx.resume(); } catch { /* ignore */ } }
       setSampleRate(ctx.sampleRate);
       const src = ctx.createMediaStreamSource(stream);
-      // ScriptProcessorNode is deprecated but the ONLY option in WKWebView.
       const sp = ctx.createScriptProcessor(4096, 1, 1);
       let chunks = 0;
       let maxVol = 0;
@@ -204,13 +216,11 @@ const VoiceProbe: React.FC = () => {
         if (chunks % 30 === 0) log(`chunk ${chunks}: rms=${rms.toFixed(4)} maxSoFar=${maxVol.toFixed(4)}`);
       };
       src.connect(sp);
-      // ScriptProcessorNode needs a destination to fire; connect to a muted gain.
       const sink = ctx.createGain();
       sink.gain.value = 0;
       sp.connect(sink);
       sink.connect(ctx.destination);
       set('scriptProc', 'ok', `capturing @ ${ctx.sampleRate}Hz`);
-      // Auto-stop after 6s.
       setTimeout(() => {
         stopRef.current = true;
         try { sp.disconnect(); sink.disconnect(); src.disconnect(); } catch { /* ignore */ }
@@ -226,13 +236,16 @@ const VoiceProbe: React.FC = () => {
         finish();
       }, 6000);
     } catch (e: any) {
-      set('scriptProc', 'fail', `${e?.name || 'Error'}: ${e?.message || ''}`);
-      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+      // Any unexpected throw (e.g. runStaticChecks / AudioContext ctor) — surface
+      // it on screen instead of leaving the button spinning forever.
+      setProbeErr(`PROBE ERROR: ${e?.name || 'Error'}: ${e?.message || String(e)}`);
+      setChecks((cs) => cs.map((c) => c.status === 'pending' ? { ...c, status: 'fail', detail: 'aborted by probe error' } : c));
       finish();
     }
   };
 
   const finish = () => {
+    if (safetyRef.current) { clearTimeout(safetyRef.current); safetyRef.current = null; }
     setRunning(false);
   };
 
@@ -320,6 +333,12 @@ const VoiceProbe: React.FC = () => {
           <div className="text-lg font-bold">{micVerdict.t}</div>
           <div className="mt-1 break-all text-xs">{micVerdict.s}</div>
         </div>
+
+        {probeErr && (
+          <div className="mb-4 break-all rounded-md border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-700 dark:text-red-400">
+            ⚠️ {probeErr}
+          </div>
+        )}
 
         <ul className="space-y-1">
           {checks.map((c) => (
