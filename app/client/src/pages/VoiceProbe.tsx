@@ -65,6 +65,8 @@ const VoiceProbe: React.FC = () => {
   const [sampleRate, setSampleRate] = useState<number | null>(null);
   const [captureLog, setCaptureLog] = useState<string[]>([]);
   const [raw, setRaw] = useState<string>('');
+  const [copied, setCopied] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
   const stopRef = useRef(false);
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -138,11 +140,33 @@ const VoiceProbe: React.FC = () => {
     await testWorker();
 
     // --- mic + ScriptProcessorNode (the make-or-break test) ---
-    set('mic', 'running');
+    set('mic', 'running', 'requesting getUserMedia…');
+    // Some WebViews (Feishu Android) silently ignore getUserMedia — the promise
+    // neither resolves nor rejects, no permission dialog appears. Race it with a
+    // timeout so the probe can't hang forever and we get a definitive verdict.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      set('mic', 'fail', 'navigator.mediaDevices.getUserMedia 不存在 (WebView 不支持 WebRTC)');
+      set('scriptProc', 'fail', 'no mic stream');
+      finish();
+      return;
+    }
+    // Best-effort permission-state probe (may be unsupported in WebView).
+    try {
+      const perm: any = await (navigator as any).permissions?.query?.({ name: 'microphone' as any });
+      if (perm) set('mic', 'running', `permissions.query → state=${perm.state} (prompt=可弹窗, denied=硬拒, granted=已授)`);
+    } catch { /* permissions API unsupported — ignore */ }
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      stream = await new Promise<MediaStream>((resolve, reject) => {
+        let done = false;
+        const t = setTimeout(() => {
+          if (done) return; done = true;
+          reject(new Error('TIMEOUT: getUserMedia 6s 无响应 (WebView 静默忽略 — 权限被拦，无弹窗)'));
+        }, 6000);
+        navigator.mediaDevices!.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+        }).then((s) => { if (done) { try { s.getTracks().forEach((tr) => tr.stop()); } catch { /* ignore */ } return; } done = true; clearTimeout(t); resolve(s); })
+          .catch((e) => { if (done) return; done = true; clearTimeout(t); reject(e); });
       });
       streamRef.current = stream;
       set('mic', 'ok', `got stream: ${stream.getAudioTracks().length} track(s)`);
@@ -212,6 +236,25 @@ const VoiceProbe: React.FC = () => {
     setRunning(false);
   };
 
+  const copyAll = async () => {
+    const text = JSON.stringify(checks, null, 2);
+    try {
+      await navigator.clipboard?.writeText?.(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+      return;
+    } catch { /* fall through to textarea select */ }
+    const ta = taRef.current;
+    if (ta) { ta.focus(); ta.select(); try { document.execCommand('copy'); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } }
+  };
+
+  const micCheck = checks.find((c) => c.key === 'mic');
+  const micVerdict =
+    micCheck?.status === 'ok' ? { t: '麦克风 OK ✅', s: 'getUserMedia 拿到音频流 → A/B 方案可走', cls: 'bg-green-500/10 text-green-700 dark:text-green-400' }
+    : micCheck?.status === 'fail' ? { t: '麦克风被拦 ❌', s: micCheck.detail || '', cls: 'bg-red-500/10 text-red-700 dark:text-red-400' }
+    : micCheck?.status === 'running' ? { t: '麦克风请求中… ⏳', s: micCheck.detail || '', cls: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400' }
+    : { t: '未测试', s: '点上面按钮运行探测', cls: 'bg-muted text-muted-foreground' };
+
   // Whenever checks change while not running, snapshot the raw JSON for the
   // "copy back" panel. (Done as an effect, not inside a setState updater.)
   useEffect(() => {
@@ -272,6 +315,12 @@ const VoiceProbe: React.FC = () => {
           {verdict}
         </div>
 
+        {/* Big mic verdict — the one bit that decides everything */}
+        <div className={cn('mb-4 rounded-lg p-3', micVerdict.cls)}>
+          <div className="text-lg font-bold">{micVerdict.t}</div>
+          <div className="mt-1 break-all text-xs">{micVerdict.s}</div>
+        </div>
+
         <ul className="space-y-1">
           {checks.map((c) => (
             <li key={c.key} className="flex flex-col rounded-md border border-border px-2 py-1">
@@ -293,10 +342,24 @@ const VoiceProbe: React.FC = () => {
         )}
 
         {raw && (
-          <details className="mt-2 mb-8">
-            <summary className="cursor-pointer text-xs text-muted-foreground">raw JSON (复制回传)</summary>
-            <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-[10px]">{raw}</pre>
-          </details>
+          <div className="mt-2 mb-8">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">raw JSON</span>
+              <button
+                onClick={copyAll}
+                className="rounded border border-border px-2 py-0.5 text-xs hover:bg-accent"
+              >
+                {copied ? '✓ 已复制' : '📋 复制'}
+              </button>
+            </div>
+            <textarea
+              ref={taRef}
+              readOnly
+              value={raw}
+              onFocus={(e) => { e.currentTarget.select(); }}
+              className="h-48 w-full resize-y overflow-auto rounded bg-muted p-2 font-mono text-[10px]"
+            />
+          </div>
         )}
 
         <p className="mb-8 text-[11px] text-muted-foreground">

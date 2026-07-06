@@ -2,7 +2,7 @@ import path from 'path';
 import { defineConfig } from '@lark-apaas/fullstack-vite-preset';
 
 // Stamped at build time. Bump APP_VERSION on releases; BUILD_TIME auto-updates.
-const APP_VERSION = '0.4.10';
+const APP_VERSION = '0.4.11';
 const BUILD_TIME = new Date().toISOString();
 
 export default defineConfig({
