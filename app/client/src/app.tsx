@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import SessionsDrawer from './components/SessionsDrawer';
 import Conversation from './pages/Conversation';
+import VoiceProbe from './pages/VoiceProbe';
 import NotFound from './pages/NotFound/NotFound';
 import { versionLabel } from './version';
 
@@ -43,6 +44,7 @@ const Shell: React.FC = () => {
         <Routes>
           <Route path="/" element={<Placeholder />} />
           <Route path="/s/:sessionId" element={<Conversation />} />
+          <Route path="/voice-probe" element={<VoiceProbe />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
 
@@ -68,6 +70,9 @@ const Placeholder: React.FC = () => (
     <div>
       <p className="mb-1">Tap <span className="font-medium">☰ Sessions</span> to pick an agent session.</p>
       <p className="text-xs">Copilot · Claude · Codex — online sessions listed first.</p>
+      <p className="mt-3 text-xs">
+        <Link to="/voice-probe" className="text-primary underline">🎤 Voice-input capability probe</Link>
+      </p>
     </div>
   </div>
 );
