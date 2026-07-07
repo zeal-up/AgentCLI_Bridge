@@ -86,24 +86,57 @@ const VoiceProbe: React.FC = () => {
   const log = (s: string) => setCaptureLog((l) => [...l, s]);
 
   const runStaticChecks = () => {
-    const UA = navigator.userAgent;
-    set('ua', 'ok', `${iosVer(UA)} · ${UA.slice(0, 120)}`);
-    const h5 = typeof (window as any).h5sdk !== 'undefined';
-    const tt = typeof (window as any).tt !== 'undefined';
-    set('h5sdk', h5 || tt ? 'ok' : 'fail', `h5sdk=${h5} tt=${tt}`);
-    const hasWasm = typeof WebAssembly === 'object' && !!WebAssembly;
-    set('wasm', hasWasm ? 'ok' : 'fail', hasWasm ? 'WebAssembly present' : 'absent');
-    let simd = false;
-    try { simd = hasWasm ? WebAssembly.validate(SIMD_MODULE) : false; } catch (e: any) { simd = false; }
-    set('simd', simd ? 'ok' : 'fail', simd ? 'SIMD supported' : 'SIMD NOT supported (sherpa-onnx would run slow)');
-    const hasSab = typeof SharedArrayBuffer === 'function';
-    set('sab', hasSab ? 'ok' : 'fail', hasSab ? 'present (unexpected in WKWebView)' : 'absent (expected — single-thread sherpa build is fine)');
-    const coi = !!(window as any).crossOriginIsolated;
-    set('coi', coi ? 'ok' : 'fail', String(coi));
-    set('speech', 'ok', String(typeof (window as any).SpeechRecognition !== 'undefined' || typeof (window as any).webkitSpeechRecognition !== 'undefined'));
-    // AudioWorklet: object may exist but addModule typically fails in WKWebView.
-    const aw = !!(window as any).AudioContext && typeof (window as any).AudioContext?.prototype?.audioWorklet !== 'undefined';
-    set('audioWorklet', aw ? 'ok' : 'fail', aw ? 'audioWorklet object present (addModule still may fail)' : 'absent');
+    // Each check is wrapped so one failing getter (e.g. accessing
+    // AudioContext.prototype.audioWorklet throws "Illegal invocation" because the
+    // getter expects an instance, not the prototype) can't abort the rest and
+    // block the mic test from running.
+    const trySet = (key: string, fn: () => { status: Status; detail: string }) => {
+      try {
+        const r = fn();
+        set(key, r.status, r.detail);
+      } catch (e: any) {
+        set(key, 'fail', `ERROR: ${e?.name || 'Error'}: ${e?.message || String(e)}`);
+      }
+    };
+    trySet('ua', () => {
+      const UA = navigator.userAgent;
+      return { status: 'ok' as Status, detail: `${iosVer(UA)} · ${UA.slice(0, 120)}` };
+    });
+    trySet('h5sdk', () => {
+      const h5 = typeof (window as any).h5sdk !== 'undefined';
+      const tt = typeof (window as any).tt !== 'undefined';
+      const wc = typeof (window as any).webComponent !== 'undefined';
+      return { status: (h5 || tt || wc) ? 'ok' as Status : 'fail' as Status, detail: `h5sdk=${h5} tt=${tt} webComponent=${wc}` };
+    });
+    trySet('wasm', () => {
+      const hasWasm = typeof WebAssembly === 'object' && !!WebAssembly;
+      return { status: hasWasm ? 'ok' as Status : 'fail' as Status, detail: hasWasm ? 'WebAssembly present' : 'absent' };
+    });
+    trySet('simd', () => {
+      let simd = false;
+      try { simd = WebAssembly.validate(SIMD_MODULE); } catch { simd = false; }
+      return { status: simd ? 'ok' as Status : 'fail' as Status, detail: simd ? 'SIMD supported' : 'SIMD NOT supported (sherpa-onnx would run slow)' };
+    });
+    trySet('sab', () => {
+      const hasSab = typeof SharedArrayBuffer === 'function';
+      return { status: hasSab ? 'ok' as Status : 'fail' as Status, detail: hasSab ? 'present' : 'absent (expected — single-thread sherpa build is fine)' };
+    });
+    trySet('coi', () => {
+      const coi = !!(window as any).crossOriginIsolated;
+      return { status: coi ? 'ok' as Status : 'fail' as Status, detail: String(coi) };
+    });
+    trySet('speech', () => {
+      const has = typeof (window as any).SpeechRecognition !== 'undefined' || typeof (window as any).webkitSpeechRecognition !== 'undefined';
+      return { status: 'ok' as Status, detail: String(has) };
+    });
+    trySet('audioWorklet', () => {
+      // Use `in` to avoid triggering the audioWorklet getter on the prototype —
+      // accessing AudioContext.prototype.audioWorklet throws "Illegal invocation"
+      // because the getter expects an instance, not the prototype object.
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+      const aw = !!AC && typeof AC.prototype === 'object' && 'audioWorklet' in AC.prototype;
+      return { status: aw ? 'ok' as Status : 'fail' as Status, detail: aw ? 'audioWorklet present (addModule still may fail)' : 'absent' };
+    });
   };
 
   const testWorker = (): Promise<void> => new Promise((resolve) => {
