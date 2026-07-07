@@ -147,7 +147,7 @@ fi
 while true; do
   python3 -m bridge voice >>"$2/voice.log" 2>&1
   rc=$?
-  # rc=2 means voice misconfigured (no secret/backend); don't spin.
+  # rc=2 means voice misconfigured (no secret/backend); do not spin.
   if [[ "$rc" -eq 2 ]]; then
     echo "$(date -Is) voice refusing to serve (rc=2); stopping daemon" >>"$2/voice.log"
     exit 0
