@@ -8,7 +8,7 @@ PIDFILE="${STATE_DIR}/bridge.pids"
 sweep_orphans() {
   # Sweep wrappers from older script versions that may have been orphaned under
   # PID 1 and are no longer represented in the current PID file.
-  pkill -f 'python3 -m bridge (index|tail|inject)' 2>/dev/null || true
+  pkill -f 'python3 -m bridge (index|tail|inject|voice)' 2>/dev/null || true
 }
 
 if [[ ! -f "$PIDFILE" ]]; then

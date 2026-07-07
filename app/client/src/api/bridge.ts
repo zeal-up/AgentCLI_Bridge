@@ -35,22 +35,35 @@ export interface EventRow {
   ts?: string;
 }
 
-export async function listSessions(agent?: string, includeHidden = false): Promise<SessionRow[]> {
+export async function listSessions(
+  agent?: string,
+  includeHidden = false,
+): Promise<SessionRow[]> {
   const params: Record<string, string> = {};
   if (agent) params.agent = agent;
   if (includeHidden) params.includeHidden = '1';
-  const r = await axiosForBackend({ url: 'api/sessions', method: 'GET', params });
+  const r = await axiosForBackend({
+    url: 'api/sessions',
+    method: 'GET',
+    params,
+  });
   const d = r.data;
   return Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
 }
 
 export async function getSession(id: string): Promise<SessionRow | null> {
-  const r = await axiosForBackend({ url: `api/sessions/${encodeURIComponent(id)}`, method: 'GET' });
+  const r = await axiosForBackend({
+    url: `api/sessions/${encodeURIComponent(id)}`,
+    method: 'GET',
+  });
   const d = r.data;
   return d && typeof d === 'object' ? d : null;
 }
 
-export async function renameSession(id: string, displayName: string | null): Promise<SessionRow | null> {
+export async function renameSession(
+  id: string,
+  displayName: string | null,
+): Promise<SessionRow | null> {
   const r = await axiosForBackend({
     url: `api/sessions/${encodeURIComponent(id)}`,
     method: 'PATCH',
@@ -60,7 +73,10 @@ export async function renameSession(id: string, displayName: string | null): Pro
   return d && typeof d === 'object' ? d : null;
 }
 
-export async function archiveSession(id: string, hidden: boolean): Promise<SessionRow | null> {
+export async function archiveSession(
+  id: string,
+  hidden: boolean,
+): Promise<SessionRow | null> {
   const r = await axiosForBackend({
     url: `api/sessions/${encodeURIComponent(id)}/archive`,
     method: 'PATCH',
@@ -75,7 +91,8 @@ export function formatContext(s?: SessionRow | null): string | null {
   const used = s?.ctxUsed ?? s?.ctx_used;
   const limit = s?.ctxLimit ?? s?.ctx_limit;
   if (used == null && limit == null) return null;
-  const fmt = (n: number | null | undefined) => (n == null ? '?' : `${Math.round(n / 1000)}k`);
+  const fmt = (n: number | null | undefined) =>
+    n == null ? '?' : `${Math.round(n / 1000)}k`;
   const pct = used != null && limit ? Math.round((used / limit) * 100) : null;
   return `ctx: ${fmt(used)} / ${fmt(limit)}${pct != null ? ` (${pct}%)` : ''}`;
 }
@@ -112,8 +129,28 @@ export async function sendCommand(
   return r.data;
 }
 
+export interface VoiceConfig {
+  enabled: boolean;
+  backend?: string;
+  wssUrl?: string;
+  token?: string;
+  sampleRate?: number;
+  lang?: string;
+}
+
+/** GET /api/voice/config — streaming-voice relay connection info + a short-lived
+ *  HMAC token. Returns {enabled:false} when voice is off (page then falls back
+ *  to the Web Speech path). Cookie-authed like the other endpoints. */
+export async function getVoiceConfig(): Promise<VoiceConfig> {
+  const r = await axiosForBackend({ url: 'api/voice/config', method: 'GET' });
+  return r.data ?? { enabled: false };
+}
+
 /** Resolve a human title for a session: user rename > local summary > cwd basename. */
-export function sessionTitle(s?: SessionRow | null, fallbackId?: string): string {
+export function sessionTitle(
+  s?: SessionRow | null,
+  fallbackId?: string,
+): string {
   if (!s) return fallbackId ? fallbackId.slice(0, 8) : 'Session';
   const dn = (s.displayName || s.display_name || '').trim();
   if (dn) return dn;

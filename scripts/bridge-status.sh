@@ -19,7 +19,7 @@ if [[ ! -f "$PIDFILE" ]]; then
   exit 0
 fi
 
-names=("index" "tail" "inject")
+names=("index" "tail" "inject" "voice")
 i=0
 echo "bridge daemon:"
 while IFS= read -r pid; do

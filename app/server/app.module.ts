@@ -7,6 +7,7 @@ import { ViewModule } from './modules/view/view.module';
 import { EventsModule } from './modules/events/events.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { CommandsModule } from './modules/commands/commands.module';
+import { VoiceModule } from './modules/voice/voice.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { CommandsModule } from './modules/commands/commands.module';
     SessionsModule,
     EventsModule,
     CommandsModule,
+    VoiceModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

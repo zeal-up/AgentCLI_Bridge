@@ -1,0 +1,4 @@
+# Python dependencies for the bridge. The bridge is otherwise pure stdlib;
+# these are only needed for the optional streaming voice relay
+# (python -m bridge voice). Install: pip install -r bridge/requirements.txt
+websockets>=12.0

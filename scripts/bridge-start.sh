@@ -67,6 +67,16 @@ run_inject() {
   fi
 }
 
+# Voice relay (4th daemon). Only started when a real backend is configured;
+# default install (VOICE_ASR_BACKEND=none) is unchanged.
+voice_backend() {
+  echo "${COPILOT_BRIDGE_VOICE_ASR_BACKEND:-none}"
+}
+VOICE_ENABLED=0
+if [[ "$(voice_backend)" != "none" && -n "$COPILOT_BRIDGE_VOICE_RELAY_SECRET" ]]; then
+  VOICE_ENABLED=1
+fi
+
 start_daemon() {
   local script="$1"
   setsid nohup bash -c "$script" bash "$ROOT" "$LOGDIR" >/dev/null 2>&1 </dev/null &
@@ -125,12 +135,41 @@ while true; do
 done
 ')
 
+VOICE_PID=""
+if [[ "$VOICE_ENABLED" -eq 1 ]]; then
+  VOICE_PID=$(start_daemon '
+cd "$1"
+if [[ -f "$1/.env.local" ]]; then
+  set -a
+  . "$1/.env.local"
+  set +a
+fi
+while true; do
+  python3 -m bridge voice >>"$2/voice.log" 2>&1
+  rc=$?
+  # rc=2 means voice misconfigured (no secret/backend); don't spin.
+  if [[ "$rc" -eq 2 ]]; then
+    echo "$(date -Is) voice refusing to serve (rc=2); stopping daemon" >>"$2/voice.log"
+    exit 0
+  fi
+  echo "$(date -Is) voice exited rc=$rc; restarting in 5s" >>"$2/voice.log"
+  sleep 5
+done
+')
+fi
+
 echo "$INDEX_PID" > "$PIDFILE"
 echo "$TAIL_PID" >> "$PIDFILE"
 echo "$INJECT_PID" >> "$PIDFILE"
+[[ -n "$VOICE_PID" ]] && echo "$VOICE_PID" >> "$PIDFILE"
 
 echo "bridge started (daemon):"
 echo "  index  PID $INDEX_PID  (logs $LOGDIR/index.log)"
 echo "  tail   PID $TAIL_PID   (logs $LOGDIR/tail.log)"
 echo "  inject PID $INJECT_PID (logs $LOGDIR/inject.log)"
+if [[ -n "$VOICE_PID" ]]; then
+  echo "  voice  PID $VOICE_PID  (logs $LOGDIR/voice.log, backend=$(voice_backend))"
+else
+  echo "  voice  (off — set COPILOT_BRIDGE_VOICE_ASR_BACKEND + SECRET to enable)"
+fi
 echo "stop with: ./scripts/bridge-stop.sh"

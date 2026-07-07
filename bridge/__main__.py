@@ -7,8 +7,10 @@
   python -m bridge events --session <id> [--limit N]  # query Miaoda events table
   python -m bridge inject [--once]  # poll commands table and inject into sessions
   python -m bridge redact-db        # redact sensitive-looking persisted text
+  python -m bridge voice            # streaming voice WSS relay (optional)
 """
 from __future__ import annotations
+import asyncio
 import json
 import logging
 import sys
@@ -65,8 +67,13 @@ def main(argv: list[str]) -> int:
         print(json.dumps(counts, indent=2, ensure_ascii=False))
         return 0
 
+    if cmd == "voice":
+        from .voice import relay
+        asyncio.run(relay.serve(config.VOICE_RELAY_PORT))
+        return 0
+
     print(
-        f"unknown command: {cmd!r} (try: index, ls, lock, tail, events, inject, redact-db)",
+        f"unknown command: {cmd!r} (try: index, ls, lock, tail, events, inject, redact-db, voice)",
         file=sys.stderr,
     )
     return 2
