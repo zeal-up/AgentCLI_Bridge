@@ -160,6 +160,15 @@ python -m bridge events --session <id>   # 查某 session 的事件
 - `.env.local`、本地 state（sqlite/日志/pid）均已 gitignore，勿提交。
 - License：MIT（见 `LICENSE`）。
 
+## 语音输入
+
+会话页 🎤 按住说话有两条路径：
+
+- **默认（免费、零配置）**：浏览器 Web Speech API。桌面浏览器实时 interim；飞书 Android WebView 上只在松手时出一坨文字（interim 不实时）。fresh clone 不配任何东西就是这个。
+- **可选（云端/本地 ASR 中继）**：页面采 PCM → bridge WSS 中继 → DashScope 云端 / 本地 FunASR(GPU) → 流式回文字。飞书 Android 上真·实时出字。需要 bridge + cloudflared 隧道 + API key（DashScope）或本地 GPU（FunASR）。
+
+**默认不依赖任何云服务**；DashScope 是 opt-in，方便没百炼账号的人也能用（拿 Web Speech）。详见 [docs/voice.md](docs/voice.md)。
+
 ## 已知限制
 
 - 强依赖飞书妙搭平台；禁用飞书的组织不适用。
@@ -175,3 +184,4 @@ python -m bridge events --session <id>   # 查某 session 的事件
 - [docs/DESIGN.md](docs/DESIGN.md) — 架构设计原档
 - [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) — 需求与用户故事
 - [docs/PLAN.md](docs/PLAN.md) — 实施里程碑
+- [docs/voice.md](docs/voice.md) — 语音输入：默认 Web Speech(免费) / 可选 DashScope·FunASR 中继

@@ -11,7 +11,7 @@ keeps the relay uniform so dashscope/funasr/echo/disabled all plug in.
 from __future__ import annotations
 
 import logging
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable
 
 log = logging.getLogger(__name__)
 
