@@ -36,8 +36,8 @@ log = logging.getLogger(__name__)
 class FunAsrProvider(ASRProvider):
     name = "funasr"
 
-    def __init__(self, on_partial, on_final) -> None:
-        super().__init__(on_partial, on_final)
+    def __init__(self, on_partial, on_final, on_error) -> None:
+        super().__init__(on_partial, on_final, on_error)
         self._ws = None
         self._reader_task = None
         self._closed = False
@@ -80,13 +80,17 @@ class FunAsrProvider(ASRProvider):
                     # 2pass-online (and any interim variant) = partial.
                     await self._on_partial(text)
         except Exception as e:
-            if not self._closed:
-                raise ProviderError(f"funasr read error: {e}") from e
+            if not self._closed and not self._dead:
+                self._dead = True
+                await self._on_error(f"funasr read error: {e}")
 
     async def feed_pcm(self, pcm: bytes) -> None:
-        if self._ws is None:
-            raise ProviderError("funasr not started")
-        await self._ws.send(pcm)
+        if self._ws is None or self._dead:
+            return
+        try:
+            await self._ws.send(pcm)
+        except Exception:
+            self._dead = True
 
     async def stop(self) -> None:
         self._closed = True

@@ -13,8 +13,8 @@ from .base import ASRProvider
 class EchoProvider(ASRProvider):
     name = "echo"
 
-    def __init__(self, on_partial, on_final) -> None:
-        super().__init__(on_partial, on_final)
+    def __init__(self, on_partial, on_final, on_error) -> None:
+        super().__init__(on_partial, on_final, on_error)
         self._bytes = 0
 
     async def start(self, lang: str, sample_rate: int) -> None:

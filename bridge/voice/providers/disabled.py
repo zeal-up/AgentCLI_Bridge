@@ -12,7 +12,7 @@ class DisabledProvider(ASRProvider):
         raise ProviderError("voice disabled (VOICE_ASR_BACKEND=none)")
 
     async def feed_pcm(self, pcm: bytes) -> None:
-        raise ProviderError("voice disabled")
+        return
 
     async def stop(self) -> None:
         return

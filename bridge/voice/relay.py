@@ -91,9 +91,23 @@ async def _handle_connection(ws) -> None:
         except websockets.ConnectionClosed:
             pass
 
+    async def on_error(message: str) -> None:
+        # Backend (dashscope/funasr) failed mid-stream: tell the page so it
+        # can surface the error + release, then close the page WS so the
+        # relay loop doesn't hang waiting on a dead session.
+        log.warning("voice relay: provider error uid=%s: %s", user_id, message)
+        try:
+            await ws.send(_msg("error", message=message))
+        except websockets.ConnectionClosed:
+            pass
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
     try:
         provider = provider_base.make_provider(
-            config.VOICE_ASR_BACKEND, on_partial, on_final
+            config.VOICE_ASR_BACKEND, on_partial, on_final, on_error
         )
         await provider.start(lang, sample_rate)
     except ProviderError as e:
