@@ -10,14 +10,12 @@ import {
   AGENT_LABELS,
   formatContext,
   getSession,
-  getVoiceConfig,
   listEvents,
   renameSession,
   sendCommand,
   sessionTitle,
   type EventRow,
   type SessionRow,
-  type VoiceConfig,
 } from '../api/bridge';
 import { Button } from '../components/ui/button';
 import { Textarea } from '../components/ui/textarea';
@@ -109,22 +107,12 @@ const Conversation: React.FC = () => {
       ? (window as any).SpeechRecognition ||
         (window as any).webkitSpeechRecognition
       : null;
-  const [voiceCfg, setVoiceCfg] = useState<VoiceConfig | null>(null);
-  const voiceCfgLoadedRef = useRef(false);
-  const ensureVoiceCfg = useCallback(async (): Promise<VoiceConfig | null> => {
-    if (voiceCfgLoadedRef.current) return voiceCfg;
-    try {
-      const c = await getVoiceConfig();
-      setVoiceCfg(c);
-      voiceCfgLoadedRef.current = true;
-      return c;
-    } catch {
-      voiceCfgLoadedRef.current = true;
-      return null;
-    }
-  }, [voiceCfg]);
-  // Button shows if EITHER path is usable: Web Speech present OR relay enabled.
-  const voiceSupported = !!SR || !!voiceCfg?.enabled;
+  // Track which path is active on the current press-hold so stopListen routes
+  // to the right teardown (relay.stop keeps the WSS warm; recRef.stop is Web Speech).
+  const usingRelayRef = useRef(false);
+  // Button shows if Web Speech is present (the relay, if configured, is used
+  // when prepare() succeeds on voice-mode enter; otherwise Web Speech fallback).
+  const voiceSupported = !!SR;
 
   const [listening, setListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
@@ -146,7 +134,13 @@ const Conversation: React.FC = () => {
     setErr(`voice relay: ${msg}`);
     holdRef.current = false;
   }, []);
-  const voiceRelay = useVoiceRelay({
+  const {
+    state: relayState,
+    prepare: relayPrepare,
+    start: relayStart,
+    stop: relayStop,
+    teardown: relayTeardown,
+  } = useVoiceRelay({
     onPartial: onPartialRelay,
     onFinal: onFinalRelay,
     onError: onErrorRelay,
@@ -204,30 +198,36 @@ const Conversation: React.FC = () => {
     holdRef.current = true;
     finalTextRef.current = input;
     holdBaseLenRef.current = input.length;
-    // Decide path: relay if config says enabled, else Web Speech fallback.
-    const cfg = voiceCfg?.enabled ? voiceCfg : await ensureVoiceCfg();
-    if (cfg?.enabled) {
+    // Relay path if prepare() armed it (state 'ready'); else Web Speech.
+    if (relayState === 'ready') {
       try {
-        await voiceRelay.start();
+        await relayStart();
+        usingRelayRef.current = true;
         setListening(true);
+        return;
       } catch (e: any) {
+        // Relay start failed (e.g. ASR connect error): reset the relay and
+        // fall back to Web Speech for this hold.
+        relayTeardown();
+        usingRelayRef.current = false;
         if (e instanceof VoiceDisabledError) {
-          beginRecognition(); // config flipped off between fetch and start
+          /* fall through to Web Speech */
         } else {
-          setErr(`voice relay: ${e?.message || e}`);
-          holdRef.current = false;
+          setErr(`voice relay: ${e?.message || e}; using Web Speech`);
         }
       }
     } else {
-      beginRecognition();
+      usingRelayRef.current = false;
     }
-  }, [input, voiceCfg, ensureVoiceCfg, voiceRelay, beginRecognition]);
+    beginRecognition();
+  }, [input, relayState, relayStart, relayTeardown, beginRecognition]);
 
   const stopListen = useCallback(() => {
     holdRef.current = false;
-    if (voiceCfg?.enabled && voiceRelay.state !== 'idle') {
-      // Relay flushes the final segment before resolving {ended}.
-      voiceRelay.stop().catch(() => {
+    if (usingRelayRef.current) {
+      // Relay flushes the final segment before resolving {ended}; keeps the
+      // WSS warm (state back to 'ready') so the next press is instant.
+      relayStop().catch(() => {
         /* ignore */
       });
     } else {
@@ -238,22 +238,33 @@ const Conversation: React.FC = () => {
       }
     }
     setListening(false);
-    // Release always returns to keyboard mode so the recognized text is
-    // visible and editable in the input box.
-    setVoiceMode(false);
-  }, [voiceCfg, voiceRelay]);
+    // Stay in voice mode (armed) after release; tap 🎤 again to exit. The
+    // recognized text is already in the input box, editable.
+  }, [relayStop]);
 
   const toggleVoiceMode = useCallback(async () => {
-    // If a recognition is in progress, tapping 🎤 just stops it (and returns
-    // to keyboard via stopListen). Otherwise toggle the mode (and lazy-load
-    // the relay config so voiceSupported reflects the relay path).
+    // Listening? Tapping 🎤 releases (stopListen).
     if (listening) {
       stopListen();
       return;
     }
-    await ensureVoiceCfg();
-    setVoiceMode((v) => !v);
-  }, [listening, stopListen, ensureVoiceCfg]);
+    // Already in voice mode (armed, not listening)? Tap exits to keyboard.
+    if (voiceMode) {
+      relayTeardown();
+      usingRelayRef.current = false;
+      setVoiceMode(false);
+      return;
+    }
+    // Entering voice mode: preconnect the relay (WSS + mic + audio graph) so
+    // press-hold only pays the ASR-connect cost. Best-effort — if it fails
+    // (voice off / transport error), press-hold falls back to Web Speech.
+    try {
+      await relayPrepare();
+    } catch {
+      /* best effort; startListen falls back to Web Speech */
+    }
+    setVoiceMode(true);
+  }, [listening, voiceMode, stopListen, relayPrepare, relayTeardown]);
 
   useEffect(
     () => () => {
@@ -263,8 +274,9 @@ const Conversation: React.FC = () => {
       } catch {
         /* ignore */
       }
+      relayTeardown();
     },
-    [],
+    [relayTeardown],
   );
 
   // Tick every 2s so time-based busy clearing re-evaluates even with no new events.

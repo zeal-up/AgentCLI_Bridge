@@ -66,19 +66,7 @@ async def _handle_connection(ws) -> None:
     log.info("voice relay: authed uid=%s backend=%s", user_id, config.VOICE_ASR_BACKEND)
     await ws.send(_msg("authed", backend=config.VOICE_ASR_BACKEND))
 
-    # 2. Await start.
-    lang, sample_rate = "zh-CN", 16000
-    try:
-        start_raw = await asyncio.wait_for(ws.recv(), timeout=10)
-        start = json.loads(start_raw)
-        if start.get("type") == "start":
-            lang = start.get("lang") or lang
-            sample_rate = int(start.get("sampleRate") or sample_rate)
-    except Exception:
-        # Tolerate missing start (page may send PCM directly).
-        pass
-
-    # 3. Provider + wire results back to the page.
+    # Result callbacks (shared across utterances on this connection).
     async def on_partial(text: str) -> None:
         try:
             await ws.send(_msg("partial", text=text))
@@ -92,52 +80,75 @@ async def _handle_connection(ws) -> None:
             pass
 
     async def on_error(message: str) -> None:
-        # Backend (dashscope/funasr) failed mid-stream: tell the page so it
-        # can surface the error + release, then close the page WS so the
-        # relay loop doesn't hang waiting on a dead session.
+        # Backend failed mid-utterance. Tell the page (it can retry with a new
+        # {start}); do NOT close the connection — the WSS stays warm so the
+        # next press-hold reuses it (preconnect optimization).
         log.warning("voice relay: provider error uid=%s: %s", user_id, message)
         try:
             await ws.send(_msg("error", message=message))
         except websockets.ConnectionClosed:
             pass
-        try:
-            await ws.close()
-        except Exception:
-            pass
 
-    try:
-        provider = provider_base.make_provider(
-            config.VOICE_ASR_BACKEND, on_partial, on_final, on_error
-        )
-        await provider.start(lang, sample_rate)
-    except ProviderError as e:
-        await ws.send(_msg("error", message=str(e)))
-        await ws.close()
-        return
-
-    # 4. Pump: text frames = control, binary frames = PCM.
+    # Multi-cycle session loop: the page preconnects on voice-mode enter
+    # (auth only), then each press-hold sends {start} ... PCM ... {stop}.
+    # One WSS connection serves many utterances so press-hold only pays the
+    # ASR-connect cost, not the WSS+auth+mic setup.
+    provider: provider_base.ASRProvider | None = None
+    lang, sample_rate = "zh-CN", 16000
     try:
         async for msg in ws:
             if isinstance(msg, (bytes, bytearray)):
-                await provider.feed_pcm(bytes(msg))
+                # PCM frame; route to the current utterance's provider (if any).
+                if provider is not None:
+                    await provider.feed_pcm(bytes(msg))
                 continue
             try:
                 ctrl = json.loads(msg)
             except Exception:
                 continue
-            if ctrl.get("type") == "stop":
-                break
+            t = ctrl.get("type")
+            if t == "start":
+                lang = ctrl.get("lang") or lang
+                sample_rate = int(ctrl.get("sampleRate") or sample_rate)
+                # Stop any previous utterance's provider before starting a new one.
+                if provider is not None:
+                    try:
+                        await provider.stop()
+                    except Exception as e:
+                        log.warning("voice relay: prev provider stop: %s", e)
+                    provider = None
+                try:
+                    provider = provider_base.make_provider(
+                        config.VOICE_ASR_BACKEND, on_partial, on_final, on_error
+                    )
+                    await provider.start(lang, sample_rate)
+                except ProviderError as e:
+                    provider = None
+                    await ws.send(_msg("error", message=str(e)))
+                else:
+                    # Ack so the page knows the ASR backend is ready before it
+                    # streams (avoids dropping the first syllable).
+                    await ws.send(_msg("started", backend=config.VOICE_ASR_BACKEND))
+            elif t == "stop":
+                if provider is not None:
+                    try:
+                        await provider.stop()
+                    except Exception as e:
+                        log.warning("voice relay: provider stop: %s", e)
+                    provider = None
+                try:
+                    await ws.send(_msg("ended"))
+                except websockets.ConnectionClosed:
+                    pass
+            # other control types ignored
     except websockets.ConnectionClosed:
         pass
     finally:
-        try:
-            await provider.stop()
-        except Exception as e:
-            log.warning("voice relay: provider stop error: %s", e)
-        try:
-            await ws.send(_msg("ended"))
-        except websockets.ConnectionClosed:
-            pass
+        if provider is not None:
+            try:
+                await provider.stop()
+            except Exception as e:
+                log.warning("voice relay: final provider stop: %s", e)
         try:
             await ws.close()
         except Exception:

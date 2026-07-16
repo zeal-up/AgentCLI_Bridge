@@ -5,6 +5,7 @@ export type VoiceRelayState =
   | 'idle'
   | 'fetching'
   | 'connecting'
+  | 'ready'
   | 'listening'
   | 'stopping';
 
@@ -27,15 +28,19 @@ interface Options {
 }
 
 /**
- * Streaming voice via the bridge WSS relay: fetch config -> WSS connect with
- * HMAC token -> getUserMedia + ScriptProcessor -> downsample to 16k Int16 ->
- * send PCM binary frames -> receive partial/final text. Mirrors the
- * VoiceProbe capture core; the relay path needs no SpeechRecognition.
+ * Streaming voice via the bridge WSS relay: prepare() -> start() -> stop()
+ * (per utterance) -> teardown(). Mirrors the VoiceProbe capture core; the
+ * relay path needs no SpeechRecognition.
  *
- * Press-and-hold lifecycle: await start() on pointer-down (resolves once
- * listening), await stop() on pointer-up (flushes final, closes everything).
- * start() throws VoiceDisabledError when voice is off (fall back to Web
- * Speech) or Error on transport failure (surface + release).
+ * prepare() (on voice-mode enter): fetch config -> WSS connect + auth ->
+ * getUserMedia + ScriptProcessor (armed, NOT streaming). Moves the heavy
+ * setup off the press-hold path so press-hold only pays the ASR-connect cost.
+ * start() (pointer-down): send {start}, await {started}, enable streaming.
+ * stop() (pointer-up): stop streaming + {stop}, keep WSS/mic warm for reuse.
+ * teardown() (voice-mode exit): close WSS + mic + AudioContext.
+ *
+ * prepare() throws VoiceDisabledError when voice is off (caller falls back
+ * to Web Speech) or Error on transport failure.
  */
 export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
   const [state, setState] = useState<VoiceRelayState>('idle');
@@ -46,6 +51,11 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
   const spRef = useRef<ScriptProcessorNode | null>(null);
   const downRef = useRef<DownsampleTo16k | null>(null);
   const cfgRef = useRef<VoiceConfig | null>(null);
+  // True only while a {start}'d session is active — onaudioprocess downsamples
+  // always (keeps the graph pulling) but only sends PCM when this is true, so
+  // the mic can be armed during voice mode without streaming to the ASR backend
+  // until the user actually press-holds.
+  const streamingRef = useRef(false);
   // Latest callbacks in refs so the async loop always sees fresh closures
   // without re-creating start/stop (which would abort the in-flight session).
   const onPartialRef = useRef(onPartial);
@@ -98,7 +108,15 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
     downRef.current = null;
   }, []);
 
-  const start = useCallback(async () => {
+  /**
+   * Preconnect: fetch config -> open WSS -> auth -> getUserMedia -> AudioContext
+   * -> ScriptProcessor (armed, NOT streaming). Called when the user ENTERS
+   * voice mode, so the heavy setup (WSS roundtrip + mic open + audio graph)
+   * happens once per voice-mode session instead of on every press-hold.
+   * streaming stays false until start(). Throws VoiceDisabledError if voice
+   * is off (caller falls back to Web Speech) or Error on transport failure.
+   */
+  const prepare = useCallback(async () => {
     setState('fetching');
     let cfg: VoiceConfig;
     try {
@@ -118,7 +136,7 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
 
-    // 1. open + auth handshake.
+    // open + auth handshake.
     await new Promise<void>((resolve, reject) => {
       const to = setTimeout(() => reject(new Error('wss open timeout')), 8000);
       ws.onopen = () => {
@@ -149,7 +167,8 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
       ws.addEventListener('message', onMsg);
     });
 
-    // 2. persistent control + results handler.
+    // Persistent results handler for the life of the connection. Control acks
+    // ({started}/{ended}) are consumed by start()/stop() via ad-hoc listeners.
     ws.onmessage = (ev: MessageEvent) => {
       if (typeof ev.data !== 'string') return;
       let m: any;
@@ -162,14 +181,13 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
       else if (m.type === 'final') onFinalRef.current(m.text || '');
       else if (m.type === 'error')
         onErrorRef.current(m.message || 'relay error');
-      // 'ended' is consumed by stop(); ignore here.
     };
     ws.onerror = () => onErrorRef.current('wss connection lost');
     ws.onclose = () => {
-      /* cleanup happens in stop() or unmount */
+      /* teardown() or unmount handles cleanup */
     };
 
-    // 3. mic + ScriptProcessor capture (reuse VoiceProbe core).
+    // mic + ScriptProcessor (armed; streaming=false so PCM isn't sent yet).
     const stream = await getUserMediaWithTimeout(6000);
     streamRef.current = stream;
     const AC =
@@ -188,24 +206,72 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
     const targetRate = cfg.sampleRate || 16000;
     downRef.current = new DownsampleTo16k(ctx.sampleRate, targetRate);
     sp.onaudioprocess = (ev: AudioProcessingEvent) => {
+      if (!streamingRef.current) return; // armed, not streaming
       const ws2 = wsRef.current;
       if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
       const input = ev.inputBuffer.getChannelData(0);
       const pcm = downRef.current!.push(input);
       if (pcm.length) ws2.send(pcm.buffer);
     };
+    streamingRef.current = false;
+    setState('ready');
+  }, []);
 
-    ws.send(
-      JSON.stringify({
-        type: 'start',
-        sampleRate: ctx.sampleRate,
-        lang: cfg.lang || 'zh-CN',
-      }),
-    );
+  /**
+   * Press-hold: send {start}, await the bridge's {started} ack (ASR backend
+   * connected), then enable streaming. Assumes prepare() succeeded (state
+   * 'ready'). Throws if not prepared or the ASR start fails/times out.
+   */
+  const start = useCallback(async () => {
+    const ws = wsRef.current;
+    const cfg = cfgRef.current;
+    const ctx = ctxRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !cfg || !ctx) {
+      throw new Error('relay not prepared');
+    }
+    setState('connecting');
+    await new Promise<void>((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error('asr start timeout')), 8000);
+      const onMsg = (ev: MessageEvent) => {
+        let m: any;
+        try {
+          m = JSON.parse(typeof ev.data === 'string' ? ev.data : '');
+        } catch {
+          return;
+        }
+        if (m.type === 'started') {
+          clearTimeout(to);
+          ws.removeEventListener('message', onMsg);
+          resolve();
+        } else if (m.type === 'error') {
+          clearTimeout(to);
+          ws.removeEventListener('message', onMsg);
+          reject(new Error(m.message || 'asr start failed'));
+        }
+      };
+      ws.addEventListener('message', onMsg);
+      try {
+        ws.send(
+          JSON.stringify({
+            type: 'start',
+            sampleRate: ctx.sampleRate,
+            lang: cfg.lang || 'zh-CN',
+          }),
+        );
+      } catch {
+        clearTimeout(to);
+        reject(new Error('send failed'));
+      }
+    });
+    streamingRef.current = true;
     setState('listening');
   }, []);
 
+  /** Release: stop streaming + send {stop}, await {ended}. Keeps the WSS +
+   *  mic warm (state back to 'ready') so the next press-hold only pays the
+   *  ASR-connect cost. */
   const stop = useCallback(async () => {
+    streamingRef.current = false;
     setState('stopping');
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -233,13 +299,19 @@ export function useVoiceRelay({ onPartial, onFinal, onError }: Options) {
         }
       });
     }
+    setState('ready'); // armed again — WSS/mic stay warm for next press
+  }, []);
+
+  /** Exit voice mode: tear down WSS + mic + AudioContext. */
+  const teardown = useCallback(() => {
+    streamingRef.current = false;
     cleanup();
     setState('idle');
   }, [cleanup]);
 
   useEffect(() => () => cleanup(), [cleanup]);
 
-  return { state, start, stop };
+  return { state, prepare, start, stop, teardown };
 }
 
 /** getUserMedia with a hard timeout — Feishu WebView can silently never
