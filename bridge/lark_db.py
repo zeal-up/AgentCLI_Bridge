@@ -63,7 +63,7 @@ def _run(sql: str, env: str | None = None, timeout: int = 180) -> list[dict]:
         "--app-id", config.APP_ID,
         "--profile", config.LARK_PROFILE,
         "--as", "user",
-        "--env", env,
+        "--environment", env,
         "--sql", sql,
         "--yes",
         "--format", "json",
@@ -89,7 +89,20 @@ def _run(sql: str, env: str | None = None, timeout: int = 180) -> list[dict]:
                 ) from exc
 
             if obj.get("ok"):
-                return obj["data"].get("results", [])
+                # Normalize to a list of result objects.
+                #   newer lark-cli (>=1.0.65):
+                #     SELECT -> data is a list of rows already parsed
+                #     DML    -> data is a single dict {"command":..,"rows_affected":N}
+                #     multi-statement -> data is a list of per-stmt dicts
+                #   older lark-cli: data is {"results": [ {sql_type, data}, ... ]}
+                data = obj.get("data")
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict):
+                    if "results" in data and isinstance(data["results"], list):
+                        return data["results"]
+                    return [data]
+                return []
 
             err = obj.get("error", {})
             retryable = _is_retryable_error(err if isinstance(err, dict) else None)
@@ -115,9 +128,24 @@ def _run(sql: str, env: str | None = None, timeout: int = 180) -> list[dict]:
 
 
 def query(sql: str, env: str | None = None) -> list[dict[str, Any]]:
-    """Run a SELECT and return rows as list of dicts."""
+    """Run a SELECT and return rows as list of dicts.
+
+    Handles two lark-cli response shapes:
+      - newer (>=1.0.65): data is a list of result rows already parsed
+        (e.g. [{"id": "...", "agent": "copilot"}]).
+      - older: data is a list of wrappers {"sql_type": "SELECT",
+        "data": "<json string of rows>"}.
+    """
     out: list[dict[str, Any]] = []
     for r in _run(sql, env=env):
+        if not isinstance(r, dict):
+            continue
+        # Newer shape: a real result row (no sql_type wrapper, or data is a
+        # list/dict already). Treat it as a row directly.
+        if "sql_type" not in r:
+            out.append(r)
+            continue
+        # Older shape: wrapper with a JSON-string data field.
         if r.get("sql_type") == "SELECT" and r.get("data"):
             try:
                 out.extend(json.loads(r["data"]))
@@ -129,7 +157,11 @@ def query(sql: str, env: str | None = None) -> list[dict[str, Any]]:
 def execute(sql: str, env: str | None = None) -> int:
     """Run INSERT/UPDATE/DELETE (multi-statement ok). Return affected rows."""
     results = _run(sql, env=env)
-    return sum((r.get("affected_rows") or 0) for r in results)
+    return sum(
+        (r.get("rows_affected") or r.get("affected_rows") or 0)
+        for r in results
+        if isinstance(r, dict)
+    )
 
 
 def sql_str(s: Any) -> str:
