@@ -90,6 +90,9 @@ const Conversation: React.FC = () => {
   const lastTsRef = useRef<string>('');
   const oldestTsRef = useRef<string>('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Lets onSend() kick the adaptive poll loop into a fast immediate poll so the
+  // user sees the agent's reply without waiting for the idle backoff interval.
+  const pollKickRef = useRef<() => void>(() => {});
 
   // ---- Voice input (press-and-hold) ----
   // Two paths, picked at press time:
@@ -342,8 +345,19 @@ const Conversation: React.FC = () => {
       }
       return fresh.length;
     };
+    // Adaptive poll: poll 1.5s while new rows arrive, back off exponentially
+    // (cap 10s) when idle, pause while the Feishu tab is hidden, and kick to
+    // fast on send. Achieves "only frequent traffic when there's new chat":
+    // idle sessions drop from ~40 req/min to ~6; active stays real-time.
+    const MIN_MS = 1500;
+    const MAX_MS = 10000;
+    let interval = MIN_MS;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let paused = false; // tab hidden
+    let kickRequested = false; // onSend asked for a fast poll
+
     const poll = async () => {
-      if (inFlight) return;
+      if (inFlight || cancelled || paused) return;
       inFlight = true;
       try {
         const since = lastTsRef.current || undefined;
@@ -351,6 +365,12 @@ const Conversation: React.FC = () => {
         if (cancelled) return;
         const n = applyRows(rows);
         if (!since && n === PAGE_SIZE) setHasMore(true); // initial page full → maybe more older
+        // New rows OR a pending send-kick → fast; empty → backoff (cap).
+        interval =
+          n > 0 || kickRequested
+            ? MIN_MS
+            : Math.min(MAX_MS, Math.round(interval * 1.7));
+        kickRequested = false;
         setErr(null);
       } catch (e: any) {
         setErr(
@@ -358,16 +378,48 @@ const Conversation: React.FC = () => {
             ? `HTTP ${e.response.status}`
             : String(e?.message ?? e),
         );
+        // Back off on error too — don't hammer a failing endpoint.
+        interval = Math.min(MAX_MS, Math.round(interval * 2));
       } finally {
         inFlight = false;
         if (!cancelled) setLoading(false);
+        if (!cancelled && !paused) schedule();
       }
     };
+    const schedule = () => {
+      if (cancelled || paused) return;
+      timer = setTimeout(poll, interval);
+    };
+    const onVis = () => {
+      if (document.hidden) {
+        paused = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+      } else if (!cancelled) {
+        paused = false;
+        interval = MIN_MS;
+        poll(); // immediate poll on return to foreground
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    pollKickRef.current = () => {
+      if (cancelled || paused) return;
+      kickRequested = true;
+      interval = MIN_MS;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (!inFlight) poll();
+    };
+
     poll();
-    const t = setInterval(poll, 1500);
     return () => {
       cancelled = true;
-      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVis);
+      if (timer) clearTimeout(timer);
     };
   }, [sessionId]);
 
@@ -438,6 +490,9 @@ const Conversation: React.FC = () => {
       await sendCommand(sessionId, text, session?.agent);
       setInput('');
       setErr(null);
+      // Kick the adaptive poll into fast mode so the agent's reply shows
+      // without waiting on the idle backoff interval.
+      pollKickRef.current();
     } catch (e: any) {
       // Roll back the optimistic bubble on failure.
       setPending((p) => p.filter((m) => m.content !== text));
