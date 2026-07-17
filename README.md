@@ -94,6 +94,7 @@
 | **零侵入读** | 读方向只读 agent CLI 本地产生的文件（events.jsonl / transcript），不修改 agent 行为、不打补丁。终端里发起的对话同样被捕获。 |
 | **多 agent 统一** | Copilot / Claude / Codex 一个界面管理，同一套会话列表 + 对话视图 + 指令通道，新增 agent 只改一个适配器。 |
 | **双向实时** | live 会话走 tmux send-keys，手机发的指令真正键入正在运行的终端，agent 的流式输出即时回灌页面；离线会话走 headless resume 追加 transcript。 |
+| **低流量同步** | 写方向按 `events.jsonl` 字节增量（offset）触发——会话不活动就 0 写入妙达；读方向自适应退避（活跃 1.5s、空闲退避到 ~10s、飞书标签后台暂停），发指令后立即快档。空闲会话对妙达近乎零压力（~6 次/分钟 vs 旧 40 次/分钟）。 |
 | **崩溃可恢复** | Tailer 的 byte offset 持久化在本地 sqlite；进程崩了重启从断点续读，事件 id 是稳定 hash（幂等 INSERT ON CONFLICT），不丢不重。 |
 | **指令来源受控** | 注入带 `--allow-all-tools` 等高危标志，仅 `COPILOT_BRIDGE_ALLOW_OPEN_IDS` 白名单内的飞书用户能发指令。 |
 | **可观测** | 本地日志 + 妙搭 release 历史 + DB 表可直接查；`python -m bridge ls/lock/events` 一条命令体检。 |
