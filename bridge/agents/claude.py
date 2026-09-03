@@ -70,19 +70,23 @@ def _decode_cwd_from_dirname(enc: str) -> str:
     return "/" + enc[1:].replace("-", "/")
 
 
-def _last_titles(fpath: str) -> tuple[str | None, str | None]:
-    """Grep the transcript for the last custom-title and ai-title values.
-    Returns (custom_title, ai_title). grep is cheap even on large files."""
+def _last_markers(fpath: str) -> tuple[str | None, str | None, str | None]:
+    """Grep the transcript for the last custom-title, ai-title and
+    continued-in marker. Returns (custom_title, ai_title, continued_into).
+    continued_into is the successor session id when Claude Code compacted
+    this session into a new one (the old transcript then ends here).
+    grep is cheap even on large files."""
     import subprocess
     custom: str | None = None
     ai: str | None = None
+    cont: str | None = None
     try:
         out = subprocess.run(
-            ["grep", "-E", '"(customTitle|aiTitle)"', fpath],
+            ["grep", "-E", '"(customTitle|aiTitle|continuedInSessionId)"', fpath],
             capture_output=True, text=True, timeout=10,
         ).stdout
     except Exception:
-        return (None, None)
+        return (None, None, None)
     for line in out.splitlines():
         line = line.strip()
         if not line:
@@ -95,7 +99,9 @@ def _last_titles(fpath: str) -> tuple[str | None, str | None]:
             custom = ev["customTitle"]
         elif ev.get("type") == "ai-title" and ev.get("aiTitle"):
             ai = ev["aiTitle"]
-    return (custom, ai)
+        elif ev.get("type") == "continued-in" and ev.get("continuedInSessionId"):
+            cont = ev["continuedInSessionId"]
+    return (custom, ai, cont)
 
 
 def _last_cwd(fpath: str) -> str | None:
@@ -217,11 +223,11 @@ class ClaudeAdapter(AgentAdapter):
         except OSError as exc:
             log.warning("failed to read %s: %s", fpath, exc)
 
-        custom_title, ai_title = _last_titles(fpath)
+        custom_title, ai_title, continued_into = _last_markers(fpath)
         title = custom_title or ai_title or (first_user or "")[:80] or None
 
         cwd = _last_cwd(fpath) or _decode_cwd_from_dirname(proj_enc)
-        return {"cwd": cwd, "title": title}
+        return {"cwd": cwd, "title": title, "continued_into": continued_into}
 
     # ---- injection / rename ------------------------------------------------
 
@@ -295,6 +301,9 @@ class ClaudeAdapter(AgentAdapter):
                 "updated_at": _mtime_iso(mtime),
                 "online": online,
                 "pid": pid,
+                # Set when Claude Code compacted this session into a successor;
+                # the indexer archives such rows (see indexer.index()).
+                "continued_into": m.get("continued_into"),
             })
         return out
 

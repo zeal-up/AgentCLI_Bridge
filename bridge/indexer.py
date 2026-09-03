@@ -68,6 +68,29 @@ def index() -> int:
             )
             lark_db.execute(sql)
 
+        # Auto-archive sessions that Claude Code compacted into a successor:
+        # the transcript ends with a continued-in marker and the conversation
+        # moves on under the successor id. Without this, the frozen old row
+        # lingers in the list under the same title (looks like a broken/
+        # half-loaded conversation). Only archive when the successor exists
+        # locally, so we never hide a conversation with no visible successor.
+        # hidden is not touched by the upsert above, so this survives reruns.
+        local_ids = {s["id"] for s in sessions}
+        compacted = [
+            s["id"] for s in sessions
+            if s.get("continued_into") and s["continued_into"] in local_ids
+        ]
+        if compacted:
+            in_list = ",".join(lark_db.sql_str(i) for i in compacted)
+            archived = lark_db.execute(
+                f"UPDATE sessions SET hidden = TRUE "
+                f"WHERE id IN ({in_list}) AND NOT hidden"
+            )
+            if archived:
+                log.info("agent %s: archived %d compacted session(s) whose "
+                         "conversation continued in a successor session",
+                         key, archived)
+
         total += len(sessions)
         log.info("agent %s: %d sessions (%d online)", key, len(sessions),
                  sum(1 for s in sessions if s.get("online")))
