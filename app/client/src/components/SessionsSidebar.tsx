@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { listSessions, type SessionRow } from '../api/bridge';
+import { BODY_LEVEL_CLASS, formatBody, listSessions, type SessionRow } from '../api/bridge';
 import { cn } from '../lib/utils';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
@@ -36,6 +36,7 @@ const SessionsSidebar: React.FC = () => {
           {rows.map((r) => {
             const active = location.pathname.startsWith(`/s/${r.id}`);
             const label = r.summary || (r.cwd ? r.cwd.split('/').filter(Boolean).pop() : r.id.slice(0, 8));
+            const body = formatBody(r);
             return (
               <li key={r.id}>
                 <Link
@@ -50,8 +51,13 @@ const SessionsSidebar: React.FC = () => {
                     <span className="truncate font-medium">{label}</span>
                   </div>
                   <span className="truncate pl-4 text-xs text-muted-foreground">{r.cwd || r.id}</span>
-                  <span className="pl-4 text-[10px] text-muted-foreground/70">
-                    {r.updatedAt ?? r.updated_at ?? ''}
+                  <span className="flex items-center gap-1.5 pl-4 text-[10px] text-muted-foreground/70">
+                    <span className="truncate">{r.updatedAt ?? r.updated_at ?? ''}</span>
+                    {body && (
+                      <span className={cn('shrink-0 font-mono', BODY_LEVEL_CLASS[body.level])}>
+                        {body.text}
+                      </span>
+                    )}
                   </span>
                 </Link>
               </li>

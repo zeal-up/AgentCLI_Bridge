@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AGENT_LABELS, archiveSession, listSessions, sessionTitle, type SessionRow } from '../api/bridge';
+import { AGENT_LABELS, BODY_LEVEL_CLASS, archiveSession, formatBody, listSessions, sessionTitle, type SessionRow } from '../api/bridge';
 import { cn } from '../lib/utils';
 
 interface Props {
@@ -124,6 +124,7 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
             const active = r.id === selected;
             const label = sessionTitle(r, r.id);
             const ts = r.updatedAt ?? r.updated_at ?? '';
+            const body = formatBody(r);
             const agent = (r.agent || 'copilot') as Agent;
             const isHidden = !!r.hidden;
             return (
@@ -152,6 +153,11 @@ const SessionsDrawer: React.FC<Props> = ({ selected, onSelect, onClose }) => {
                   </div>
                   <div className="flex items-center gap-2 pl-4 text-xs text-muted-foreground">
                     <span className="shrink-0 font-mono">{r.id.slice(0, 8)}</span>
+                    {body && (
+                      <span className={cn('shrink-0 font-mono', BODY_LEVEL_CLASS[body.level])}>
+                        {body.text}
+                      </span>
+                    )}
                     <span className="break-all">{r.cwd || r.id}</span>
                     <button
                       onClick={async (e) => {

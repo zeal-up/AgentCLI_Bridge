@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   pid          INTEGER,
   ctx_used     INTEGER,
   ctx_limit    INTEGER,
+  req_bytes    INTEGER,
+  req_limit    INTEGER,
   hidden       BOOLEAN NOT NULL DEFAULT FALSE,
   indexed_at   TEXT
 );

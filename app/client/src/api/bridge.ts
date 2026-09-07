@@ -15,6 +15,10 @@ export interface SessionRow {
   ctx_used?: number | null;
   ctxLimit?: number | null;
   ctx_limit?: number | null;
+  reqBytes?: number | null;
+  req_bytes?: number | null;
+  reqLimit?: number | null;
+  req_limit?: number | null;
   hidden?: boolean;
 }
 
@@ -96,6 +100,38 @@ export function formatContext(s?: SessionRow | null): string | null {
   const pct = used != null && limit ? Math.round((used / limit) * 100) : null;
   return `ctx: ${fmt(used)} / ${fmt(limit)}${pct != null ? ` (${pct}%)` : ''}`;
 }
+
+export interface BodySize {
+  text: string;
+  level: 'ok' | 'warn' | 'crit';
+}
+
+/** Request-body size estimate for Claude sessions — base64 images/PDFs still
+ *  in the active context + ~5 bytes/token of text, vs the API's body limit
+ *  (e.g. Bailian 6MB). Mirrors the CLI statusline 📦 indicator: ok <60%,
+ *  warn >=60%, crit >=85% of the limit. Null for agents without the metric. */
+export function formatBody(s?: SessionRow | null): BodySize | null {
+  const bytes = s?.reqBytes ?? s?.req_bytes;
+  if (bytes == null) return null;
+  const limit = s?.reqLimit ?? s?.req_limit;
+  const fmt = (n: number) =>
+    n >= 1048576 ? `${(n / 1048576).toFixed(1)}M` : `${Math.max(1, Math.round(n / 1024))}K`;
+  const pct = limit ? Math.round((bytes / limit) * 100) : null;
+  const level: BodySize['level'] =
+    pct == null ? 'ok' : pct >= 85 ? 'crit' : pct >= 60 ? 'warn' : 'ok';
+  return {
+    text: `📦 ${level === 'crit' ? '⚠' : ''}${fmt(bytes)}${limit ? `/${fmt(limit)}` : ''}${
+      pct != null ? ` ${pct}%` : ''
+    }`,
+    level,
+  };
+}
+
+export const BODY_LEVEL_CLASS: Record<BodySize['level'], string> = {
+  ok: 'text-muted-foreground',
+  warn: 'text-amber-500',
+  crit: 'text-red-500 font-medium',
+};
 
 /** List events for a session.
  *  `since` (ISO ts, exclusive) = incremental newer events.

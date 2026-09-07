@@ -4,13 +4,14 @@ from __future__ import annotations
 import datetime
 import logging
 
-from . import lark_db
+from . import config, lark_db
 from .agents import AGENTS
 from .redact import redact_text
 
 log = logging.getLogger(__name__)
 
-COLS = "(id, agent, cwd, summary, updated_at, online, pid, indexed_at, ctx_used, ctx_limit)"
+COLS = ("(id, agent, cwd, summary, updated_at, online, pid, indexed_at, "
+        "ctx_used, ctx_limit, req_bytes, req_limit)")
 CHUNK = 50  # rows per upsert statement
 
 
@@ -36,8 +37,11 @@ def index() -> int:
             ctx = adapter.get_context(sid)
             ctx_used = str(ctx["used"]) if ctx and ctx.get("used") is not None else "NULL"
             ctx_limit = str(ctx["limit"]) if ctx and ctx.get("limit") is not None else "NULL"
+            # Request-body size estimate (claude only; other agents -> NULL).
+            req_bytes = str(ctx["body_bytes"]) if ctx and ctx.get("body_bytes") is not None else "NULL"
+            req_limit = str(config.CLAUDE_BODY_LIMIT) if req_bytes != "NULL" else "NULL"
             values.append(
-                "({id},{ag},{cwd},{sum},{upd},{onl},{pid},{idx},{cu},{cl})".format(
+                "({id},{ag},{cwd},{sum},{upd},{onl},{pid},{idx},{cu},{cl},{rb},{rl})".format(
                     id=lark_db.sql_str(sid),
                     ag=lark_db.sql_str(key),
                     cwd=lark_db.sql_str(redact_text(s.get("cwd"))),
@@ -48,6 +52,8 @@ def index() -> int:
                     idx=lark_db.sql_str(now),
                     cu=ctx_used,
                     cl=ctx_limit,
+                    rb=req_bytes,
+                    rl=req_limit,
                 )
             )
 
@@ -60,6 +66,7 @@ def index() -> int:
                 "updated_at=EXCLUDED.updated_at, online=EXCLUDED.online, "
                 "pid=EXCLUDED.pid, indexed_at=EXCLUDED.indexed_at, "
                 "ctx_used=EXCLUDED.ctx_used, ctx_limit=EXCLUDED.ctx_limit, "
+                "req_bytes=EXCLUDED.req_bytes, req_limit=EXCLUDED.req_limit, "
                 "display_name=CASE "
                 "WHEN sessions.display_name IS NOT NULL "
                 "AND EXCLUDED.summary IS DISTINCT FROM sessions.summary "

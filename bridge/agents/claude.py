@@ -23,6 +23,7 @@ from typing import Any
 
 from .base import AgentAdapter, context_limit_for
 from . import live
+from .. import config
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,83 @@ def _truncate(text: str) -> str:
     if len(text) <= MAX_CONTENT_LEN:
         return text
     return text[:TRUNCATE_HEAD] + "\n…[truncated]"
+
+
+# Avg bytes per token of text in a request body (CJK-heavy sessions), same
+# constant as the CLI statusline's bodybytes.mjs estimator.
+BYTES_PER_TOKEN = 5
+
+
+def _count_blobs(obj: Any, acc: list[int]) -> None:
+    """Recursively sum base64 source.data lengths (images/PDFs) in an event."""
+    if isinstance(obj, list):
+        for v in obj:
+            _count_blobs(v, acc)
+    elif isinstance(obj, dict):
+        src = obj.get("source")
+        if (isinstance(src, dict) and src.get("type") == "base64"
+                and isinstance(src.get("data"), str)):
+            acc[0] += len(src["data"])
+            return
+        for v in obj.values():
+            _count_blobs(v, acc)
+
+
+def _body_blob_bytes(path: str, session_id: str) -> int | None:
+    """Base64 image/PDF bytes still in the session's *active* context.
+
+    Scans the transcript incrementally (offset/bytes/inode cached per session
+    under the bridge state dir) and resets the accumulator at a compaction
+    summary — everything before it drops out of the next request. Mirrors
+    ~/.claude/bodybytes.mjs used by the CLI statusline's 📦 indicator."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    cache_dir = os.path.join(os.path.dirname(config.BRIDGE_STATE_DB), "bodybytes")
+    cache_path = os.path.join(cache_dir, f"{session_id}.json")
+    offset, acc = 0, 0
+    try:
+        with open(cache_path, "r", encoding="utf-8") as fh:
+            c = json.load(fh)
+        if (c.get("ino") == st.st_ino and isinstance(c.get("offset"), int)
+                and 0 <= c["offset"] <= st.st_size):
+            offset, acc = c["offset"], int(c.get("bytes") or 0)
+    except Exception:
+        pass
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(offset)
+            chunk = fh.read()
+    except OSError:
+        return None
+    end = chunk.rfind(b"\n")  # only complete lines
+    if end < 0:
+        return acc
+    for line in chunk[:end + 1].decode("utf-8", "replace").splitlines():
+        if '"isCompactSummary"' in line:
+            try:
+                if json.loads(line).get("isCompactSummary") is True:
+                    acc = 0
+            except json.JSONDecodeError:
+                pass
+        elif '"base64"' in line:
+            try:
+                a = [0]
+                _count_blobs(json.loads(line), a)
+                acc += a[0]
+            except json.JSONDecodeError:
+                pass
+    offset += end + 1
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        tmp = cache_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"offset": offset, "bytes": acc, "ino": st.st_ino}, fh)
+        os.replace(tmp, cache_path)
+    except OSError:
+        pass
+    return acc
 
 
 def _short_args(args: Any, limit: int = 200) -> str:
@@ -256,7 +334,10 @@ class ClaudeAdapter(AgentAdapter):
 
     def get_context(self, session_id: str) -> dict[str, Any] | None:
         """Current context = latest assistant turn's input tokens (input +
-        cache_creation + cache_read). Limit from the model map."""
+        cache_creation + cache_read). Limit from the model map. Also estimates
+        the next request's body size in bytes (base64 blobs in the active
+        context + ~BYTES_PER_TOKEN per token) — APIs like Bailian cap the
+        request body, so the app shows 📦 used/limit next to ctx."""
         path = self.events_path(session_id)
         if not path or not os.path.exists(path):
             return None
@@ -278,7 +359,10 @@ class ClaudeAdapter(AgentAdapter):
                 + (u.get("cache_creation_input_tokens") or 0)
                 + (u.get("cache_read_input_tokens") or 0))
         model = msg.get("model")
-        return {"used": used, "limit": context_limit_for(model), "model": model}
+        blob = _body_blob_bytes(path, session_id)
+        body_bytes = None if blob is None else blob + (used or 0) * BYTES_PER_TOKEN
+        return {"used": used, "limit": context_limit_for(model), "model": model,
+                "body_bytes": body_bytes}
 
     # ---- indexing ---------------------------------------------------------
 

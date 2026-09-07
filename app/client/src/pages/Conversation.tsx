@@ -8,6 +8,8 @@ import React, {
 import { useParams } from 'react-router-dom';
 import {
   AGENT_LABELS,
+  BODY_LEVEL_CLASS,
+  formatBody,
   formatContext,
   getSession,
   listEvents,
@@ -578,6 +580,7 @@ const Conversation: React.FC = () => {
   const title = sessionTitle(session, sessionId);
   const agent = session?.agent || 'copilot';
   const ctxLabel = formatContext(session);
+  const bodySize = formatBody(session);
 
   const startRename = () => {
     setNameDraft(title);
@@ -653,6 +656,18 @@ const Conversation: React.FC = () => {
           <span className="font-mono shrink-0">{sessionId.slice(0, 8)}</span>
           {ctxLabel && (
             <span className="ml-auto shrink-0 font-mono">{ctxLabel}</span>
+          )}
+          {bodySize && (
+            <span
+              className={cn(
+                'shrink-0 font-mono',
+                !ctxLabel && 'ml-auto',
+                BODY_LEVEL_CLASS[bodySize.level],
+              )}
+              title="Estimated next request body size / API limit (base64 images in context + ~5 bytes/token)"
+            >
+              {bodySize.text}
+            </span>
           )}
         </div>
       </header>

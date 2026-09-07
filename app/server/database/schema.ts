@@ -152,6 +152,8 @@ export const sessions = pgTable("sessions", {
   agent: text("agent").notNull().default('copilot'),
   ctxUsed: integer("ctx_used"),
   ctxLimit: integer("ctx_limit"),
+  reqBytes: integer("req_bytes"),
+  reqLimit: integer("req_limit"),
   hidden: boolean("hidden").notNull().default(false),
 });
 

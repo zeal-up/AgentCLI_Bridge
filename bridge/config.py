@@ -26,6 +26,15 @@ BRIDGE_STATE_DB = os.environ.get(
     os.path.expanduser("~/.copilot-bridge/bridge-state.db"),
 )
 
+# Claude request-body byte limit (APIs like Bailian/DashScope cap the request
+# body, e.g. 6MB; base64 images in context count toward it). Same knob as the
+# CLI statusline's CLAUDE_BODY_LIMIT. Used for the 📦 req-size display only.
+CLAUDE_BODY_LIMIT = int(
+    os.environ.get("COPILOT_BRIDGE_CLAUDE_BODY_LIMIT")
+    or os.environ.get("CLAUDE_BODY_LIMIT")
+    or "6291456"
+)
+
 # ---- Streaming voice input relay (optional, OFF by default) ----
 # Voice is OFF unless VOICE_ASR_BACKEND is set to a real backend AND
 # VOICE_RELAY_SECRET is non-empty. The relay runs as a 4th daemon
