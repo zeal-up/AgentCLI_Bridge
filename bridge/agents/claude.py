@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from typing import Any
@@ -207,6 +208,80 @@ def _last_cwd(fpath: str) -> str | None:
         if ev.get("cwd"):
             last = ev["cwd"]
     return last
+# ---- exact live-proc ↔ session pairing ------------------------------------
+# Claude Code keeps two ids per running instance:
+#   sessionId  — the conversation/transcript id (top-level on every event,
+#                = the .jsonl filename)
+#   session_id — the *runtime* id of the process instance currently writing
+#                (nested field on user/assistant events; bumps on
+#                compact/continue/resume). The same runtime id appears in the
+#                process' open fd  /tmp/claude-*/<project>/<runtime-id>/tasks.
+# Matching transcript -> runtime id -> pid therefore pins the exact process,
+# unlike cwd matching which collapses multiple procs in one cwd to a single
+# pid and misattributes sessions after compaction (the "live tmux session
+# shows dead in the UI" bug).
+_RUNTIME_FD_RE = re.compile(
+    r"^/tmp/claude-[^/]+/[^/]+/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/")
+_RUNTIME_CACHE: tuple[float, dict[str, int]] = (0.0, {})
+_RUNTIME_CACHE_TTL = 5.0
+_TAIL_BYTES = 64 * 1024
+
+
+def _runtime_pid_map() -> dict[str, int]:
+    """{runtime_id: pid} for interactive claude procs, from their open
+    /tmp/claude-*/<project>/<runtime-id>/tasks fd (held from shortly after
+    process start). Cached 5s."""
+    global _RUNTIME_CACHE
+    now = time.time()
+    if now - _RUNTIME_CACHE[0] < _RUNTIME_CACHE_TTL:
+        return _RUNTIME_CACHE[1]
+    out: dict[str, int] = {}
+    for pid in live.interactive_pids("claude"):
+        try:
+            fds = os.listdir(f"/proc/{pid}/fd")
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(f"/proc/{pid}/fd/{fd}")
+            except OSError:
+                continue
+            m = _RUNTIME_FD_RE.match(target)
+            if m:
+                out[m.group(1)] = pid
+                break
+    _RUNTIME_CACHE = (now, out)
+    return out
+
+
+def _last_runtime_id(path: str) -> str | None:
+    """Runtime id of the most recent writer of this transcript: the top-level
+    session_id field on the last event carrying one. Reads only the file tail.
+    (JSON-parsed top-level only — the id also appears in message content,
+    which must not be mistaken for the field.)"""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - _TAIL_BYTES))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    for line in reversed(tail.splitlines()):
+        line = line.strip()
+        if not line or '"session_id"' not in line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # partial first line of the tail window
+        rid = ev.get("session_id")
+        if isinstance(rid, str) and len(rid) == 36:
+            return rid
+    return None
+
+
+
 
 
 class ClaudeAdapter(AgentAdapter):
@@ -303,9 +378,9 @@ class ClaudeAdapter(AgentAdapter):
 
         custom_title, ai_title, continued_into = _last_markers(fpath)
         title = custom_title or ai_title or (first_user or "")[:80] or None
-
         cwd = _last_cwd(fpath) or _decode_cwd_from_dirname(proj_enc)
-        return {"cwd": cwd, "title": title, "continued_into": continued_into}
+        return {"cwd": cwd, "title": title, "continued_into": continued_into,
+                "runtime_id": _last_runtime_id(fpath)}
 
     # ---- injection / rename ------------------------------------------------
 
@@ -405,15 +480,26 @@ class ClaudeAdapter(AgentAdapter):
     def _find_live_pid(self, m: dict[str, Any]) -> int | None:
         """The interactive claude pid running this session, or None.
 
-        Primary match: a live proc whose cwd == the session's recorded cwd, AND
-        this transcript is the newest .jsonl in its project dir (so we don't
-        hijack another session in the same cwd).
+        Primary match (exact): every user/assistant event in the transcript
+        carries the writing process' runtime id (top-level session_id), and
+        that process holds /tmp/claude-*/<project>/<runtime-id>/tasks open —
+        so transcript runtime id -> pid pins the exact process even when
+        several claude procs share one cwd, and survives compact/continue.
+
+        Secondary match (heuristic, older CLIs / missing fd): a live proc
+        whose cwd == the session's recorded cwd, AND this transcript is the
+        newest .jsonl in its project dir.
 
         Fallback for renamed cwds: if the recorded cwd no longer exists (the
         dir was renamed while the session was live), find an "orphan" live claude
         proc — one whose cwd matches NO session's recorded cwd. A renamed-cwd
         session's proc now runs in the new (unrecorded) cwd, so it shows up as
         an orphan. Link them 1:1 (only when there's exactly one orphan)."""
+        rid = m.get("runtime_id")
+        if rid:
+            pid = _runtime_pid_map().get(rid)
+            if pid:
+                return pid
         path = m.get("path", "")
         cwd = m.get("cwd")
         pid = _find_live_claude_pid(path, cwd)

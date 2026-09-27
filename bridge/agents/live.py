@@ -46,6 +46,12 @@ def _interactive_pids(basename: str) -> list[int]:
     return out
 
 
+def interactive_pids(basename: str) -> list[int]:
+    """Public alias for _interactive_pids (agent adapters probe their own
+    process' open files on top of this)."""
+    return _interactive_pids(basename)
+
+
 def live_cwd_map(basename: str) -> dict[str, int]:
     """{realpath(cwd): pid} for interactive processes of this agent. Cached."""
     now = time.time()
